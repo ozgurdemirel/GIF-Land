@@ -1,3 +1,4 @@
+# Still Under Construction
 # GIF/WebP/MP4 Screen Recorder
 
 A high-performance screen recording application for macOS built with Kotlin Multiplatform and Compose Desktop. Records screen content directly to WebP, MP4, or GIF formats using pure JVM implementation.
