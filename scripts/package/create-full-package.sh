@@ -44,8 +44,8 @@ echo "📦 Building DMG package..."
 ./gradlew :composeApp:packageDmg
 
 # Check DMG size
-DMG_GLOB="composeApp/build/compose/binaries/main/dmg/*.dmg"
-DMG_PATH=$(ls -1 $DMG_GLOB 2>/dev/null | head -n 1 || true)
+DMG_DIR="composeApp/build/compose/binaries/main/dmg"
+DMG_PATH=$(find "$DMG_DIR" -name "*.dmg" -type f 2>/dev/null | head -n 1 || true)
 if [ -n "$DMG_PATH" ] && [ -f "$DMG_PATH" ]; then
     DMG_SIZE=$(ls -lh "$DMG_PATH" | awk '{print $5}')
     echo ""
