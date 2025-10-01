@@ -79,8 +79,157 @@ object MainScreen : Screen {
             modifier = Modifier.fillMaxSize(),
             color = Color(0xFFF8FAFC)
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            if (recordingState.isRecording) {
+                // Compact recording layout with sticky bottom buttons
                 Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Ultra-compact recording header
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFFFF6B6B), Color(0xFFFFE66D))
+                                    )
+                                )
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .background(Color.Red, CircleShape)
+                                            .scale(pulse)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = "REC",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "${recordingState.duration}s / ${recorder.settings.maxDuration}s",
+                                        color = Color.White.copy(0.9f),
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                CircularProgressIndicator(
+                                    progress = { recordingState.duration / recorder.settings.maxDuration.toFloat() },
+                                    modifier = Modifier.size(30.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    trackColor = Color.White.copy(0.3f)
+                                )
+                            }
+                        }
+                    }
+
+                    // Recording info card - takes remaining space
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(vertical = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFFF7043).copy(alpha = 0.1f)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFFFF7043))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("Frames", fontSize = 11.sp, color = Color.Gray)
+                                    Text("${recordingState.frameCount}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("Size", fontSize = 11.sp, color = Color.Gray)
+                                    Text(String.format("%.1fMB", recordingState.estimatedSize / (1024.0 * 1024.0)), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    // Sticky buttons at bottom
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Button(
+                            onClick = { recorder.pauseRecording() },
+                            modifier = Modifier
+                                .height(40.dp)
+                                .weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(if (recordingState.isPaused) "▶" else "⏸", fontSize = 16.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    recorder.stopRecording()
+                                        .onSuccess { file ->
+                                            lastSavedFile = file
+                                            message = "Saved!"
+                                            recorder.reset()
+                                        }
+                                        .onFailure {
+                                            message = "Error!"
+                                            recorder.reset()
+                                        }
+                                }
+                            },
+                            modifier = Modifier
+                                .height(40.dp)
+                                .weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text("⏹ Stop", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else {
+                // Normal layout when not recording
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .widthIn(max = 600.dp)
@@ -493,6 +642,7 @@ object MainScreen : Screen {
             }
         }
     }
+}
 
     @Composable
     private fun CompactInfoCard(label: String, value: String) {

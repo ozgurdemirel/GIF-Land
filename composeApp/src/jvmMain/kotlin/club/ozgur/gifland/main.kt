@@ -16,8 +16,9 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "WebP/MP4 Recorder",
-        state = windowState
+        state = windowState,
+        resizable = false  // Prevent manual resizing to control it programmatically
     ) {
-        App()
+        App(windowState)
     }
 }
