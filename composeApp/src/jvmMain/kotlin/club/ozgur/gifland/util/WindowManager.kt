@@ -2,10 +2,14 @@ package club.ozgur.gifland.util
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowState
 import kotlinx.coroutines.delay
+import androidx.compose.ui.unit.Density
+import java.awt.Toolkit
+import kotlin.math.min
 
 object WindowManager {
     // Normal window size when not recording
@@ -16,6 +20,33 @@ object WindowManager {
 
     // Animation duration in milliseconds
     const val ANIMATION_DURATION = 300L
+
+    /**
+     * Fit a base size into the current screen by scaling down if needed.
+     */
+    fun fitSizeToScreen(
+        baseSize: DpSize,
+        density: Density,
+        paddingPx: Int = 80,
+        minWidthDp: Float = 320f,
+        minHeightDp: Float = 240f
+    ): DpSize {
+        val screen = Toolkit.getDefaultToolkit().screenSize
+        val allowedWidthPx = (screen.width - paddingPx).coerceAtLeast(300)
+        val allowedHeightPx = (screen.height - paddingPx).coerceAtLeast(240)
+
+        val baseWidthPx = with(density) { baseSize.width.toPx() }
+        val baseHeightPx = with(density) { baseSize.height.toPx() }
+
+        val scaleX = allowedWidthPx / baseWidthPx
+        val scaleY = allowedHeightPx / baseHeightPx
+        val scale = min(1f, min(scaleX, scaleY).toFloat())
+
+        val scaledWidthDp = (baseSize.width.value * scale).coerceAtLeast(minWidthDp)
+        val scaledHeightDp = (baseSize.height.value * scale).coerceAtLeast(minHeightDp)
+
+        return DpSize(scaledWidthDp.dp, scaledHeightDp.dp)
+    }
 
     /**
      * Smoothly resizes the window from current size to target size
@@ -80,12 +111,10 @@ fun WindowResizeEffect(
     isRecording: Boolean,
     animate: Boolean = true
 ) {
-    LaunchedEffect(isRecording) {
-        val targetSize = if (isRecording) {
-            WindowManager.COMPACT_SIZE
-        } else {
-            WindowManager.NORMAL_SIZE
-        }
+    val density = LocalDensity.current
+    LaunchedEffect(isRecording, density) {
+        val base = if (isRecording) WindowManager.COMPACT_SIZE else WindowManager.NORMAL_SIZE
+        val targetSize = WindowManager.fitSizeToScreen(base, density)
 
         if (animate) {
             WindowManager.animateResize(windowState, targetSize)
