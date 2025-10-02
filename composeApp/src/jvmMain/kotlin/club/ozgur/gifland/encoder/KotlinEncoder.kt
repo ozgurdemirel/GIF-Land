@@ -299,14 +299,26 @@ class KotlinEncoder(
     }
 
     private fun findFfmpeg(): String? {
-        // Always use bundled FFmpeg - throw exception if not found
-        val bundledPath = this::class.java.getResource("/native/macos/ffmpeg")?.path
-            ?: throw IllegalStateException("Bundled FFmpeg not found in resources")
-
-        if (!File(bundledPath).exists()) {
-            throw IllegalStateException("Bundled FFmpeg exists in resources but file not found at: $bundledPath")
+        // Determine OS-specific bundled path
+        val osName = System.getProperty("os.name").lowercase()
+        val resourcePath = when {
+            osName.contains("win") -> "/native/windows/ffmpeg.exe"
+            osName.contains("mac") || osName.contains("darwin") -> "/native/macos/ffmpeg"
+            else -> "/native/macos/ffmpeg" // default to mac for now
         }
 
-        return bundledPath
+        val resourceUrl = this::class.java.getResource(resourcePath)
+            ?: throw IllegalStateException("Bundled FFmpeg not found in resources at: $resourcePath")
+
+        val file = File(resourceUrl.path)
+        if (!file.exists()) {
+            throw IllegalStateException("Bundled FFmpeg exists in resources but file not found at: ${file.absolutePath}")
+        }
+
+        if (!file.canExecute()) {
+            file.setExecutable(true, false)
+        }
+
+        return file.absolutePath
     }
 }

@@ -43,14 +43,19 @@ echo "🧹 Cleaning previous builds..."
 echo "📦 Building DMG package..."
 ./gradlew :composeApp:packageDmg
 
-# Check DMG size
+# Check DMG size and copy with canonical name
 DMG_DIR="composeApp/build/compose/binaries/main/dmg"
 DMG_PATH=$(find "$DMG_DIR" -name "*.dmg" -type f 2>/dev/null | head -n 1 || true)
 if [ -n "$DMG_PATH" ] && [ -f "$DMG_PATH" ]; then
     DMG_SIZE=$(ls -lh "$DMG_PATH" | awk '{print $5}')
+
+    # Produce a clearly named artifact for CI
+    TARGET_DMG="$DMG_DIR/webp-recorder-mac-silicon.dmg"
+    cp "$DMG_PATH" "$TARGET_DMG"
+
     echo ""
     echo "✅ Build complete!"
-    echo "📦 DMG created: $DMG_PATH"
+    echo "📦 DMG created: $TARGET_DMG"
     echo "📏 DMG size: $DMG_SIZE"
     echo ""
     echo "🎯 Package includes:"

@@ -84,6 +84,8 @@ compose.desktop {
             windows {
                 iconFile.set(project.file("src/jvmMain/resources/icons/app-icon.ico"))
                 menuGroup = "WebP Recorder"
+                // Bundle the ffmpeg.exe into resources path used at runtime
+                // Compose will include files under resources automatically
             }
 
             macOS {

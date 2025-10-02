@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Uygulama Temel Bilgileri -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    
+    <key>CFBundleExecutable</key>
+    <string>WebP Recorder</string>
+    
+    <key>CFBundleIdentifier</key>
+    <string>club.ozgur.gifland</string>
+    
+    <key>CFBundleName</key>
+    <string>WebP Recorder</string>
+    
+    <key>CFBundleDisplayName</key>
+    <string>WebP Recorder</string>
+    
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15</string>
+    
+    <!-- App Store Kategorisi -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    
+    <!-- İzinler ve Yetenekler -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    
+    <!-- Ekran Kaydı İzni -->
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>WebP Recorder needs access to screen recording to capture your screen and create WebP/MP4 videos.</string>
+    
+    <!-- Erişilebilirlik İzni (global klavye/mouse için) -->
+    <key>NSAppleEventsUsageDescription</key>
+    <string>WebP Recorder needs accessibility access to detect keyboard shortcuts for recording control.</string>
+    
+    <!-- Dosya Erişim İzni -->
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>WebP Recorder needs access to save recorded videos to your Desktop.</string>
+    
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>WebP Recorder needs access to save recorded videos to your Documents folder.</string>
+    
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>WebP Recorder needs access to save recorded videos to your Downloads folder.</string>
+    
+    <!-- App Sandbox Ayarları -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <false/>
+    </dict>
+    
+    <!-- Desteklenen Dosya Türleri -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>WebP Image</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>org.webmproject.webp</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>MP4 Video</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.mpeg-4</string>
+            </array>
+        </dict>
+    </array>
+    
+    <!-- Copyright -->
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2024 Ozgur Club. All rights reserved.</string>
+</dict>
+</plist>
