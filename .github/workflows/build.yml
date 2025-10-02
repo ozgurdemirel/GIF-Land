@@ -1,0 +1,40 @@
+name: Build for Mac M Silicon (Simple)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          architecture: 'aarch64'
+
+      - name: Build with existing script
+        run: |
+          chmod +x ./scripts/**/*.sh
+          ./scripts/package/create-full-package.sh
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v3
+        with:
+          name: webp-recorder-dmg
+          path: composeApp/build/compose/binaries/main/dmg/*.dmg
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: composeApp/build/compose/binaries/main/dmg/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
