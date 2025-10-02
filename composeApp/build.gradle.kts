@@ -82,14 +82,19 @@ compose.desktop {
 
 
             windows {
-                iconFile.set(project.file("src/jvmMain/resources/icons/app-icon.ico"))
+                val winIcon = project.file("src/jvmMain/resources/icons/app-icon.ico")
+                if (winIcon.exists()) {
+                    iconFile.set(winIcon)
+                }
                 menuGroup = "WebP Recorder"
-                // Bundle the ffmpeg.exe into resources path used at runtime
                 // Compose will include files under resources automatically
             }
 
             macOS {
-                iconFile.set(project.file("src/jvmMain/resources/icons/app-icon.icns"))
+                val macIcon = project.file("src/jvmMain/resources/icons/app-icon.icns")
+                if (macIcon.exists()) {
+                    iconFile.set(macIcon)
+                }
                 bundleID = "club.ozgur.gifland"
             }
 
