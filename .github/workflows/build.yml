@@ -26,7 +26,7 @@ jobs:
           ./scripts/package/create-full-package.sh
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: webp-recorder-dmg
           path: composeApp/build/compose/binaries/main/dmg/*.dmg
