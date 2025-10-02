@@ -15,27 +15,24 @@ object NativeEncoderSimple {
     private var bundledFfmpegPath: File? = null
 
     private fun getBundledFfmpeg(): File? {
-        // Return cached path if already extracted
         if (bundledFfmpegPath?.exists() == true) {
             return bundledFfmpegPath
         }
 
-        // Try to extract bundled FFmpeg
-        try {
-            // Detect system architecture
-            val osArch = System.getProperty("os.arch")?.lowercase() ?: ""
-            val isArm = osArch.contains("aarch64") || osArch.contains("arm")
+        return try {
+            val osName = System.getProperty("os.name").lowercase()
+            val isWindows = osName.contains("win")
+            val bundledPath = when {
+                isWindows -> "/native/windows/ffmpeg.exe"
+                osName.contains("mac") || osName.contains("darwin") -> "/native/macos/ffmpeg"
+                else -> "/native/macos/ffmpeg"
+            }
 
-            Log.d("NativeEncoderSimple", "System architecture: $osArch, isARM: $isArm")
-
-            // For now we only have ARM64 binary, but structure supports multiple
-            val bundledPath = "/native/macos/ffmpeg"
             val resourceStream = NativeEncoderSimple::class.java.getResourceAsStream(bundledPath)
-
             if (resourceStream != null) {
-                val tempFile = File(System.getProperty("java.io.tmpdir"), "gifland_ffmpeg_${System.currentTimeMillis()}")
+                val suffix = if (isWindows) ".exe" else ""
+                val tempFile = File(System.getProperty("java.io.tmpdir"), "gifland_ffmpeg_${System.currentTimeMillis()}$suffix")
                 tempFile.deleteOnExit()
-
                 Log.d("NativeEncoderSimple", "Extracting FFmpeg to: ${tempFile.absolutePath}")
 
                 resourceStream.use { input ->
@@ -44,70 +41,76 @@ object NativeEncoderSimple {
                     }
                 }
 
-                // Make it executable
-                val makeExecutable = ProcessBuilder("chmod", "+x", tempFile.absolutePath).start()
-                makeExecutable.waitFor()
-
-                if (!tempFile.canExecute()) {
-                    tempFile.setExecutable(true, false)
+                // Ensure executable on Unix-like systems
+                if (!isWindows) {
+                    runCatching {
+                        val makeExecutable = ProcessBuilder("chmod", "+x", tempFile.absolutePath).start()
+                        makeExecutable.waitFor()
+                    }
+                    if (!tempFile.canExecute()) {
+                        tempFile.setExecutable(true, false)
+                    }
                 }
 
                 bundledFfmpegPath = tempFile
                 Log.d("NativeEncoderSimple", "Successfully extracted bundled FFmpeg to: ${tempFile.absolutePath}")
-                return tempFile
+                tempFile
             } else {
                 Log.d("NativeEncoderSimple", "FFmpeg resource not found at: $bundledPath")
+                null
             }
         } catch (e: Exception) {
             Log.e("NativeEncoderSimple", "Could not extract bundled FFmpeg", e)
+            null
         }
-
-        return null
     }
 
     private fun findFfmpeg(): String {
-        // First try bundled FFmpeg
-        getBundledFfmpeg()?.let {
-            if (it.exists() && it.canExecute()) {
-                return it.absolutePath
-            }
-        }
+        getBundledFfmpeg()?.let { if (it.exists()) return it.absolutePath }
 
-        // Fallback to system FFmpeg
-        val systemPaths = listOf(
+        val osName = System.getProperty("os.name").lowercase()
+        val isWindows = osName.contains("win")
+        val systemPaths = if (isWindows) listOf(
+            System.getenv("ProgramFiles") + "\\ffmpeg\\bin\\ffmpeg.exe",
+            System.getenv("ProgramFiles(x86)") + "\\ffmpeg\\bin\\ffmpeg.exe",
+            "C:\\ffmpeg\\bin\\ffmpeg.exe"
+        ) else listOf(
             "/usr/local/bin/ffmpeg",
             "/opt/homebrew/bin/ffmpeg",
             "/usr/bin/ffmpeg"
         )
 
         for (path in systemPaths) {
-            if (File(path).exists()) {
+            if (path != null && File(path).exists()) {
                 Log.d("NativeEncoderSimple", "Using system FFmpeg at: $path")
                 return path
             }
         }
 
-        // Last resort - hope it's in PATH
-        return "ffmpeg"
+        return if (isWindows) "ffmpeg.exe" else "ffmpeg"
     }
 
     fun isAvailable(): Boolean {
-        // Try to find FFmpeg in common locations
-        val systemPaths = listOf(
+        val osName = System.getProperty("os.name").lowercase()
+        val isWindows = osName.contains("win")
+
+        val systemPaths = if (isWindows) listOf(
+            System.getenv("ProgramFiles") + "\\ffmpeg\\bin\\ffmpeg.exe",
+            System.getenv("ProgramFiles(x86)") + "\\ffmpeg\\bin\\ffmpeg.exe",
+            "C:\\ffmpeg\\bin\\ffmpeg.exe"
+        ) else listOf(
             "/usr/local/bin/ffmpeg",
             "/opt/homebrew/bin/ffmpeg",
             "/usr/bin/ffmpeg"
         )
 
         for (path in systemPaths) {
-            if (File(path).exists()) {
-                return true
-            }
+            if (path != null && File(path).exists()) return true
         }
 
-        // Try to execute ffmpeg from PATH
         return try {
-            val process = ProcessBuilder("which", "ffmpeg").start()
+            val cmd = if (isWindows) listOf("where", "ffmpeg") else listOf("which", "ffmpeg")
+            val process = ProcessBuilder(cmd).start()
             process.waitFor(1, TimeUnit.SECONDS)
             process.exitValue() == 0
         } catch (e: Exception) {
