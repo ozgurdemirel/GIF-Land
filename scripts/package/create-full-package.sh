@@ -15,13 +15,25 @@ trap cleanup EXIT
 
 echo "🔨 Building complete package..."
 
+# Check for skip-ffmpeg-build flag
+SKIP_FFMPEG_BUILD=false
+if [[ "$1" == "--skip-ffmpeg-build" ]]; then
+    SKIP_FFMPEG_BUILD=true
+    echo "ℹ️  Skipping FFmpeg build (using existing binary)"
+fi
+
 # Check if static FFmpeg exists, if not build it
 FFMPEG_STATIC="composeApp/src/jvmMain/resources/native/macos/ffmpeg"
-if [ ! -f "$FFMPEG_STATIC" ]; then
+if [ ! -f "$FFMPEG_STATIC" ] && [ "$SKIP_FFMPEG_BUILD" != "true" ]; then
     echo "🎬 Building static FFmpeg (this will take a while on first run)..."
     ./scripts/build/build-ffmpeg-static.sh
-else
+elif [ -f "$FFMPEG_STATIC" ]; then
     echo "✅ Static FFmpeg already exists"
+    # Make sure it's executable
+    chmod +x "$FFMPEG_STATIC"
+elif [ "$SKIP_FFMPEG_BUILD" == "true" ] && [ ! -f "$FFMPEG_STATIC" ]; then
+    echo "❌ FFmpeg not found and build skipped!" >&2
+    exit 1
 fi
 
 # Pure Kotlin/JVM implementation - no native encoder needed
