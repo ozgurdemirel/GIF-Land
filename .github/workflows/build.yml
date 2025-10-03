@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  macos:
+  macos-silicon:
     runs-on: macos-latest
     permissions:
       contents: write
@@ -28,6 +28,28 @@ jobs:
         with:
           name: webp-recorder-mac-silicon
           path: composeApp/build/compose/binaries/main/dmg/webp-recorder-mac-silicon.dmg
+
+  macos-intel:
+    runs-on: macos-13  # Use macos-13 for Intel runners
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          architecture: 'x64'  # Intel architecture
+      - name: Build macOS Intel DMG
+        run: |
+          chmod +x ./scripts/**/*.sh
+          ./scripts/package/create-full-package-mac-intel.sh
+      - name: Upload macOS Intel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: webp-recorder-mac-intel
+          path: composeApp/build/compose/binaries/main/dmg/webp-recorder-mac-intel.dmg
 
   windows:
     runs-on: windows-latest
@@ -62,7 +84,7 @@ jobs:
           path: composeApp/build/compose/binaries/main/msi/webp-recorder-windows.msi
 
   release:
-    needs: [macos, windows]
+    needs: [macos-silicon, macos-intel, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -78,6 +100,7 @@ jobs:
         with:
           files: |
             dist/webp-recorder-mac-silicon/**
+            dist/webp-recorder-mac-intel/**
             dist/webp-recorder-windows/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
