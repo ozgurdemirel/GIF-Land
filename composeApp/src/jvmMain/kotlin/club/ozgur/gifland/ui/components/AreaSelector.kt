@@ -165,8 +165,8 @@ class AreaSelector(private val onAreaSelected: (CaptureArea?) -> Unit) : JFrame(
 
             private fun drawInstructions(g2d: Graphics2D) {
                 val instructions = listOf(
-                    "Kayit alanini secmek icin tiklayin ve surukleyin",
-                    "Iptal: ESC  |  Onay: Fareyi birakin"
+                    "Click and drag to select recording area",
+                    "Cancel: ESC  |  Confirm: Release mouse"
                 )
 
                 g2d.font = Font("Arial", Font.BOLD, 16)
