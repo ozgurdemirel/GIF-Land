@@ -6,7 +6,6 @@ import club.ozgur.gifland.encoder.NativeRecorderClient
 import club.ozgur.gifland.ui.components.CaptureArea
 import club.ozgur.gifland.util.debugId
 import club.ozgur.gifland.util.Log
-import club.ozgur.gifland.util.Notifier
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,6 +69,10 @@ class Recorder {
         set(value) {
             _settings.value = value
         }
+
+    // Store last saved file for UI access
+    private val _lastSavedFile = MutableStateFlow<File?>(null)
+    val lastSavedFile: StateFlow<File?> = _lastSavedFile
 
     init {
         Log.d("Recorder", "========================================")
@@ -266,10 +269,6 @@ class Recorder {
         frameChannel?.close()
         writerJob?.join()
         writerJob = null
-        // Close channel and wait writer to drain
-        frameChannel?.close()
-        writerJob?.join()
-        writerJob = null
 
         // Calculate actual recording duration
         val actualDurationMs = System.currentTimeMillis() - startTime
@@ -280,8 +279,9 @@ class Recorder {
         }
 
         val saveResult = withContext(Dispatchers.IO) {
-            val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-            when (settings.format) {
+            try {
+                val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+                when (settings.format) {
                 OutputFormat.WEBP -> {
                         val outputFile = File(System.getProperty("user.home") + "/Documents", "recording_${timestamp}.webp")
                         webpOutputFile = outputFile
@@ -345,7 +345,9 @@ class Recorder {
 						_state.value = _state.value.copy(saveProgress = p)
 					}
 				)
+				Log.d("Recorder", "GIF encoding completed, cleaning up temp files...")
 				cleanupTemp()
+				Log.d("Recorder", "Temp files cleaned up, returning result")
 				result
 			}
 			OutputFormat.MP4 -> {
@@ -408,10 +410,23 @@ class Recorder {
                         result
 					}
 				}
+                }
+            } catch (e: Exception) {
+                Log.e("Recorder", "Error during save operation", e)
+                cleanupTemp() // Try to cleanup even on error
+                Result.failure(e)
             }
         }
-        // Mark saving done
-        _state.value = _state.value.copy(isSaving = false, saveProgress = 100)
+        // Mark saving done - clear the progress to 0 when done
+        _state.value = _state.value.copy(isSaving = false, saveProgress = 0)
+        Log.d("Recorder", "Saving complete, state updated: isSaving=false, saveProgress=0")
+
+        // Store last saved file on success
+        saveResult.onSuccess { file ->
+            _lastSavedFile.value = file
+            Log.d("Recorder", "Last saved file updated: ${file.absolutePath}")
+        }
+
         return saveResult
     }
 
@@ -481,8 +496,13 @@ class Recorder {
     }
 
     fun reset() {
+        Log.d("Recorder", "Reset called - clearing all state")
         _state.value = RecordingState()
         frames.clear()
+        frameFiles.clear()
+        frameTimestampsUs.clear()
+        cumulativeBytes = 0
+        droppedFrames = 0
     }
 }
 

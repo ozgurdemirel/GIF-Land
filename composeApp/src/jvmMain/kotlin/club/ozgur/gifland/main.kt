@@ -9,13 +9,13 @@ import androidx.compose.ui.Alignment
 fun main() = application {
     val windowState = rememberWindowState(
         width = 520.dp,
-        height = 700.dp,
+        height = 670.dp,
         position = androidx.compose.ui.window.WindowPosition(Alignment.Center)
     )
 
     Window(
         onCloseRequest = ::exitApplication,
-        title = "WebP/MP4 Recorder",
+        title = "Gif/WebP/MP4 Recorder",
         state = windowState,
         resizable = false  // Prevent manual resizing to control it programmatically
     ) {

@@ -102,24 +102,3 @@ object WindowManager {
     }
 }
 
-/**
- * Composable effect to handle window resizing based on recording state
- */
-@Composable
-fun WindowResizeEffect(
-    windowState: WindowState,
-    isRecording: Boolean,
-    animate: Boolean = true
-) {
-    val density = LocalDensity.current
-    LaunchedEffect(isRecording, density) {
-        val base = if (isRecording) WindowManager.COMPACT_SIZE else WindowManager.NORMAL_SIZE
-        val targetSize = WindowManager.fitSizeToScreen(base, density)
-
-        if (animate) {
-            WindowManager.animateResize(windowState, targetSize)
-        } else {
-            WindowManager.setSize(windowState, targetSize)
-        }
-    }
-}

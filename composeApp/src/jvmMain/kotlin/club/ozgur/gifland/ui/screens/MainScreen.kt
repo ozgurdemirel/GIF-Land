@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -26,6 +27,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import club.ozgur.gifland.LocalRecorder
+import club.ozgur.gifland.util.Log
 import club.ozgur.gifland.core.OutputFormat
 import club.ozgur.gifland.core.RecordingState
 import club.ozgur.gifland.core.Recorder
@@ -50,186 +52,30 @@ object MainScreen : Screen {
         var selectedArea by remember { mutableStateOf<CaptureArea?>(null) }
 
         // Local state for UI updates
-        var fps by remember { mutableStateOf(currentSettings.fps) }
-        var quality by remember { mutableStateOf(currentSettings.quality) }
         var format by remember { mutableStateOf(currentSettings.format) }
         var maxDuration by remember { mutableStateOf(currentSettings.maxDuration) }
 
         // Update local state when settings change
         LaunchedEffect(currentSettings) {
-            fps = currentSettings.fps
-            quality = currentSettings.quality
             format = currentSettings.format
             maxDuration = currentSettings.maxDuration
         }
-        var lastSavedFile by remember { mutableStateOf<File?>(null) }
+        val lastSavedFile by recorder.lastSavedFile.collectAsState()
 
-        // Animation states
-        val pulseAnimation = rememberInfiniteTransition()
-        val pulse by pulseAnimation.animateFloat(
-            initialValue = 1f,
-            targetValue = 1.1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1000, easing = EaseInOut),
-                repeatMode = RepeatMode.Reverse
-            )
-        )
+
+        // Kayıt başladığında RecordingScreen'e geç
+        LaunchedEffect(recordingState.isRecording) {
+            if (recordingState.isRecording) {
+                navigator.push(RecordingScreen)
+            }
+        }
 
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color(0xFFF8FAFC)
         ) {
-            if (recordingState.isRecording) {
-                // Compact recording layout with sticky bottom buttons
+            Box(modifier = Modifier.fillMaxSize()) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // Ultra-compact recording header
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(Color(0xFFFF6B6B), Color(0xFFFFE66D))
-                                    )
-                                )
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .background(Color.Red, CircleShape)
-                                            .scale(pulse)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        text = "REC",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        text = "${recordingState.duration}s / ${recorder.settings.maxDuration}s",
-                                        color = Color.White.copy(0.9f),
-                                        fontSize = 12.sp
-                                    )
-                                }
-
-                                CircularProgressIndicator(
-                                    progress = { recordingState.duration / recorder.settings.maxDuration.toFloat() },
-                                    modifier = Modifier.size(30.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp,
-                                    trackColor = Color.White.copy(0.3f)
-                                )
-                            }
-                        }
-                    }
-
-                    // Recording info card - takes remaining space
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(vertical = 8.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFFF7043).copy(alpha = 0.1f)
-                        ),
-                        border = BorderStroke(1.dp, Color(0xFFFF7043))
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text("Frames", fontSize = 11.sp, color = Color.Gray)
-                                    Text("${recordingState.frameCount}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text("Size", fontSize = 11.sp, color = Color.Gray)
-                                    Text(String.format("%.1fMB", recordingState.estimatedSize / (1024.0 * 1024.0)), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-
-                    // Sticky buttons at bottom
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Button(
-                            onClick = { recorder.pauseRecording() },
-                            modifier = Modifier
-                                .height(40.dp)
-                                .weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Text(if (recordingState.isPaused) "▶" else "⏸", fontSize = 16.sp)
-                        }
-
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    recorder.stopRecording()
-                                        .onSuccess { file ->
-                                            lastSavedFile = file
-                                            message = "Saved!"
-                                            recorder.reset()
-                                        }
-                                        .onFailure {
-                                            message = "Error!"
-                                            recorder.reset()
-                                        }
-                                }
-                            },
-                            modifier = Modifier
-                                .height(40.dp)
-                                .weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Text("⏹ Stop", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            } else {
-                // Normal layout when not recording
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .widthIn(max = 600.dp)
@@ -354,7 +200,7 @@ object MainScreen : Screen {
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text("Frames: ${recordingState.frameCount}", fontSize = 12.sp)
-                                            Text("${String.format("%.1fMB", recordingState.estimatedSize / (1024.0 * 1024.0))}", fontSize = 12.sp)
+                                            Text(String.format("%.1fMB", recordingState.estimatedSize / (1024.0 * 1024.0)), fontSize = 12.sp)
                                         }
                                     }
                                     isSaving -> {
@@ -392,12 +238,17 @@ object MainScreen : Screen {
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            if (lastSavedFile != null && message.contains("Saved")) {
-                                                TextButton(
+                                            // lastSavedFile varsa her zaman göster
+                                            if (lastSavedFile != null) {
+                                                Button(
                                                     onClick = { openFileLocation(lastSavedFile!!) },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = Color(0xFF4CAF50)
+                                                    ),
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                    modifier = Modifier.padding(start = 8.dp)
                                                 ) {
-                                                    Text("📂 Show", fontSize = 12.sp)
+                                                    Text("📂 Open Folder", fontSize = 13.sp, color = Color.White)
                                                 }
                                             }
                                         }
@@ -410,7 +261,9 @@ object MainScreen : Screen {
                     // Area Selection
                     if (!recordingState.isRecording) {
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .alpha(if (recordingState.isSaving) 0.5f else 1f),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                         ) {
@@ -433,8 +286,10 @@ object MainScreen : Screen {
                                         icon = "🖥",
                                         selected = selectedArea == null,
                                         onClick = {
-                                            selectedArea = null
-                                            message = "Full screen"
+                                            if (!recordingState.isSaving) {
+                                                selectedArea = null
+                                                message = "Full screen"
+                                            }
                                         },
                                         modifier = Modifier.weight(1f)
                                     )
@@ -444,11 +299,13 @@ object MainScreen : Screen {
                                         icon = "✂",
                                         selected = selectedArea != null,
                                         onClick = {
-                                            val selector = AreaSelector { area ->
-                                                selectedArea = area
-                                                message = area?.let { "${it.width} x ${it.height}" } ?: "Cancelled"
+                                            if (!recordingState.isSaving) {
+                                                val selector = AreaSelector { area ->
+                                                    selectedArea = area
+                                                    message = area?.let { "${it.width} x ${it.height}" } ?: "Cancelled"
+                                                }
+                                                selector.isVisible = true
                                             }
-                                            selector.isVisible = true
                                         },
                                         modifier = Modifier.weight(1f)
                                     )
@@ -526,8 +383,6 @@ object MainScreen : Screen {
                                         settings = recorder.settings,
                                         onSettingsChange = { newSettings ->
                                             recorder.settings = newSettings
-                                            fps = newSettings.fps
-                                            quality = newSettings.quality
                                             format = newSettings.format
                                             maxDuration = newSettings.maxDuration
                                         }
@@ -569,13 +424,18 @@ object MainScreen : Screen {
                                 onClick = {
                                     recorder.startRecording(
                                         area = selectedArea,
-                                        onUpdate = {},
+                                        onUpdate = { state ->
+                                            // State updates handled by StateFlow
+                                        },
                                         onComplete = { result ->
+                                            // Bu callback max duration dolunca veya hata olunca çağrılıyor
                                             result.onSuccess { file ->
-                                                lastSavedFile = file
-                                                message = "Saved!"
+                                                message = "Saved: ${file.name}"
+                                                recorder.reset()
                                             }.onFailure { error ->
+                                                Log.e("MainScreen", "Recording failed", error)
                                                 message = "Error!"
+                                                recorder.reset()
                                             }
                                         }
                                     )
@@ -583,10 +443,28 @@ object MainScreen : Screen {
                                 modifier = Modifier
                                     .height(44.dp)
                                     .weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                                enabled = !recordingState.isSaving, // Saving sırasında disabled
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFF5252),
+                                    disabledContainerColor = Color(0xFFFF5252).copy(alpha = 0.4f)
+                                ),
                                 shape = RoundedCornerShape(22.dp)
                             ) {
-                                Text("⏺ Start Recording", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (recordingState.isSaving) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Text("Saving...", fontSize = 15.sp, color = Color.White.copy(alpha = 0.7f))
+                                    } else {
+                                        Text("⏺ Start Recording", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         } else {
                             // Smaller buttons during recording
@@ -608,13 +486,13 @@ object MainScreen : Screen {
                                     scope.launch {
                                         recorder.stopRecording()
                                             .onSuccess { file ->
-                                                lastSavedFile = file
-                                                message = "Saved!"
+                                                message = "Saved: ${file.name}"
                                                 recorder.reset()
                                             }
-                                            .onFailure {
-                                                message = "Error!"
+                                            .onFailure { error ->
+                                                message = "Error: ${error.message}"
                                                 recorder.reset()
+                                                Log.e("MainScreen", "Stop button: Save failed", error)
                                             }
                                     }
                                 },
@@ -643,17 +521,6 @@ object MainScreen : Screen {
         }
     }
 }
-
-    @Composable
-    private fun CompactInfoCard(label: String, value: String) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(label, fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
-            Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        }
-    }
 
     @Composable
     private fun CompactSelectionButton(
@@ -744,4 +611,3 @@ object MainScreen : Screen {
             }
         }
     }
-}
