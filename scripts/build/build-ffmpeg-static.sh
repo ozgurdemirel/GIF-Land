@@ -43,16 +43,10 @@ ARCH=$(uname -m)
 NUM_CORES=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if [ "$ARCH" = "arm64" ]; then
     echo "🎯 Building for Apple Silicon (arm64)"
-    # Native build on ARM64 - no cross-compile needed
-    ARCH_FLAGS="--arch=arm64 --enable-neon"
-    # Enable ARM64 optimizations
-    export CFLAGS="$CFLAGS -arch arm64"
-    export LDFLAGS="$LDFLAGS -arch arm64"
+    ARCH_FLAGS="--enable-cross-compile --arch=arm64"
 else
     echo "🎯 Building for Intel (x86_64)"
     ARCH_FLAGS="--arch=x86_64"
-    export CFLAGS="$CFLAGS -arch x86_64"
-    export LDFLAGS="$LDFLAGS -arch x86_64"
 fi
 
 cd "$SOURCES_DIR"
@@ -61,12 +55,7 @@ cd "$SOURCES_DIR"
 echo "📦 Building libx264..."
 git clone --depth 1 https://github.com/mirror/x264.git
 cd x264
-if [ "$ARCH" = "arm64" ]; then
-    # Enable ARM64 NEON optimizations for x264
-    ./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-cli --host=aarch64-apple-darwin
-else
-    ./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-cli
-fi
+./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-cli
 make -j"$NUM_CORES"
 make install
 cd ..
@@ -85,12 +74,7 @@ cd ..
 echo "📦 Building libvpx..."
 git clone --depth 1 https://github.com/webmproject/libvpx.git
 cd libvpx
-if [ "$ARCH" = "arm64" ]; then
-    # Enable ARM64 NEON optimizations for libvpx
-    ./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-examples --disable-docs --target=arm64-darwin-gcc
-else
-    ./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-examples --disable-docs --target=x86_64-darwin-gcc
-fi
+./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-examples --disable-docs
 make -j"$NUM_CORES"
 make install
 cd ..
