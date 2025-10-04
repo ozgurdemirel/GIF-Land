@@ -34,12 +34,16 @@ object NativeEncoderSimple {
                 val tempFile = File(System.getProperty("java.io.tmpdir"), "gifland_ffmpeg_${System.currentTimeMillis()}$suffix")
                 tempFile.deleteOnExit()
                 Log.d("NativeEncoderSimple", "Extracting FFmpeg to: ${tempFile.absolutePath}")
+                FFmpegDebugManager.updateExtractionPath(tempFile.absolutePath)
 
                 resourceStream.use { input ->
                     tempFile.outputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
+
+                // Update file size in debug info
+                FFmpegDebugManager.updateFileSize(tempFile.length())
 
                 // Ensure executable on Unix-like systems
                 if (!isWindows) {
@@ -60,15 +64,34 @@ object NativeEncoderSimple {
                         runCatching {
                             Log.d("NativeEncoderSimple", "Removing extended attributes from FFmpeg")
                             val removeAttrs = ProcessBuilder("xattr", "-cr", tempFile.absolutePath).start()
+                            val output = removeAttrs.inputStream.readBytes().decodeToString() +
+                                        removeAttrs.errorStream.readBytes().decodeToString()
                             removeAttrs.waitFor(5, TimeUnit.SECONDS)
                             val exitCode = removeAttrs.exitValue()
+
+                            FFmpegDebugManager.addCommand(
+                                "xattr -cr ${tempFile.name}",
+                                exitCode,
+                                output.ifBlank { "Success - attributes removed" }
+                            )
+
                             if (exitCode != 0) {
                                 // Try alternative: remove specific com.apple.quarantine
                                 val removeQuarantine = ProcessBuilder("xattr", "-d", "com.apple.quarantine", tempFile.absolutePath).start()
+                                val quarantineOutput = removeQuarantine.inputStream.readBytes().decodeToString() +
+                                                      removeQuarantine.errorStream.readBytes().decodeToString()
                                 removeQuarantine.waitFor(5, TimeUnit.SECONDS)
+                                val quarantineExitCode = removeQuarantine.exitValue()
+
+                                FFmpegDebugManager.addCommand(
+                                    "xattr -d com.apple.quarantine ${tempFile.name}",
+                                    quarantineExitCode,
+                                    quarantineOutput.ifBlank { "Success - quarantine removed" }
+                                )
                             }
                         }.onFailure { e ->
                             Log.d("NativeEncoderSimple", "Could not remove attributes: ${e.message}")
+                            FFmpegDebugManager.setError("Failed to remove attributes: ${e.message}")
                         }
 
                         // Step 2: Add local ad-hoc signature (creates new signature valid on THIS machine)
@@ -82,8 +105,18 @@ object NativeEncoderSimple {
                                 tempFile.absolutePath
                             ).start()
 
+                            val signOutput = signProcess.inputStream.readBytes().decodeToString() +
+                                           signProcess.errorStream.readBytes().decodeToString()
                             val signed = signProcess.waitFor(10, TimeUnit.SECONDS)
-                            if (signed && signProcess.exitValue() == 0) {
+                            val signExitCode = signProcess.exitValue()
+
+                            FFmpegDebugManager.addCommand(
+                                "codesign --force --sign - ${tempFile.name}",
+                                signExitCode,
+                                signOutput.ifBlank { "Success - ad-hoc signature added" }
+                            )
+
+                            if (signed && signExitCode == 0) {
                                 Log.d("NativeEncoderSimple", "Successfully signed FFmpeg locally")
                             } else {
                                 // If simple signing failed, try with more options
@@ -95,18 +128,63 @@ object NativeEncoderSimple {
                                     "--sign", "-",
                                     tempFile.absolutePath
                                 ).start()
+
+                                val deepSignOutput = deepSignProcess.inputStream.readBytes().decodeToString() +
+                                                   deepSignProcess.errorStream.readBytes().decodeToString()
                                 deepSignProcess.waitFor(10, TimeUnit.SECONDS)
+                                val deepSignExitCode = deepSignProcess.exitValue()
+
+                                FFmpegDebugManager.addCommand(
+                                    "codesign --force --deep --sign - ${tempFile.name}",
+                                    deepSignExitCode,
+                                    deepSignOutput.ifBlank { "Success - deep signature added" }
+                                )
                             }
                         }.onFailure { e ->
                             Log.d("NativeEncoderSimple", "Could not sign binary (will try to run anyway): ${e.message}")
+                            FFmpegDebugManager.setError("Failed to sign binary: ${e.message}")
                         }
 
                         // Step 3: Verify the binary is ready
                         runCatching {
-                            val verifyProcess = ProcessBuilder("codesign", "-v", tempFile.absolutePath).start()
+                            val verifyProcess = ProcessBuilder("codesign", "-v", "-v", tempFile.absolutePath).start()
+                            val verifyOutput = verifyProcess.inputStream.readBytes().decodeToString() +
+                                             verifyProcess.errorStream.readBytes().decodeToString()
                             verifyProcess.waitFor(2, TimeUnit.SECONDS)
-                            if (verifyProcess.exitValue() == 0) {
+                            val verifyExitCode = verifyProcess.exitValue()
+
+                            FFmpegDebugManager.addCommand(
+                                "codesign -v -v ${tempFile.name}",
+                                verifyExitCode,
+                                verifyOutput.ifBlank { "Success - signature verified" }
+                            )
+
+                            if (verifyExitCode == 0) {
                                 Log.d("NativeEncoderSimple", "FFmpeg signature verified successfully")
+                                FFmpegDebugManager.updateVerification("✅ Signature valid and verified")
+                            } else {
+                                FFmpegDebugManager.updateVerification("⚠️ Signature verification failed (exit code: $verifyExitCode)")
+                            }
+                        }
+
+                        // Get FFmpeg version and architecture info
+                        runCatching {
+                            val versionProcess = ProcessBuilder(tempFile.absolutePath, "-version").start()
+                            val versionOutput = versionProcess.inputStream.bufferedReader().readLines()
+                            versionProcess.waitFor(2, TimeUnit.SECONDS)
+
+                            if (versionOutput.isNotEmpty()) {
+                                FFmpegDebugManager.updateFFmpegVersion(versionOutput.first())
+                            }
+
+                            // Get architecture info
+                            val fileProcess = ProcessBuilder("file", tempFile.absolutePath).start()
+                            val fileOutput = fileProcess.inputStream.readBytes().decodeToString()
+                            fileProcess.waitFor(2, TimeUnit.SECONDS)
+
+                            if (fileOutput.isNotBlank()) {
+                                val archInfo = fileOutput.substringAfter(":").trim()
+                                FFmpegDebugManager.updateArchitecture(archInfo)
                             }
                         }
                     }

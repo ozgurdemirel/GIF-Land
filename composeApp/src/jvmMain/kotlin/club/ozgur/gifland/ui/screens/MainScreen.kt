@@ -36,6 +36,7 @@ import club.ozgur.gifland.core.RecorderSettings
 import club.ozgur.gifland.ui.components.AreaSelector
 import club.ozgur.gifland.ui.components.CaptureArea
 import club.ozgur.gifland.util.openFileLocation
+import club.ozgur.gifland.encoder.FFmpegDebugManager
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -453,6 +454,180 @@ object MainScreen : Screen {
                                     fontSize = 12.sp,
                                     color = Color.Gray
                                 )
+                            }
+                        }
+
+                        // FFmpeg Debug Info Panel (Development)
+                        val debugInfo = FFmpegDebugManager.debugInfo
+                        if (debugInfo.extractionPath != null || debugInfo.lastError != null) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFFF5F5F5)
+                                ),
+                                border = BorderStroke(1.dp, Color(0xFFE0E0E0))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        "🔧 FFmpeg Debug Info",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF424242)
+                                    )
+
+                                    Divider(color = Color(0xFFE0E0E0))
+
+                                    // Extraction Path
+                                    if (debugInfo.extractionPath != null) {
+                                        Row(modifier = Modifier.fillMaxWidth()) {
+                                            Text("📁 Path: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                debugInfo.extractionPath.substringAfterLast("/"),
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF616161),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    // File Size
+                                    if (debugInfo.fileSize > 0) {
+                                        Row {
+                                            Text("📊 Size: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                "${debugInfo.fileSize / (1024 * 1024)} MB",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF616161)
+                                            )
+                                        }
+                                    }
+
+                                    // FFmpeg Version
+                                    if (debugInfo.ffmpegVersion != null) {
+                                        Row(modifier = Modifier.fillMaxWidth()) {
+                                            Text("📦 Version: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                debugInfo.ffmpegVersion.substringBefore(" Copyright"),
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF616161),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    // Architecture
+                                    if (debugInfo.architecture != null) {
+                                        Row(modifier = Modifier.fillMaxWidth()) {
+                                            Text("🏗️ Arch: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                debugInfo.architecture.take(60) + if (debugInfo.architecture.length > 60) "..." else "",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF616161),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    // Signing Commands
+                                    if (debugInfo.signingCommands.isNotEmpty()) {
+                                        Text(
+                                            "🔐 Signing Process:",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color(0xFF424242)
+                                        )
+
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(
+                                                    Color(0xFF263238),
+                                                    RoundedCornerShape(4.dp)
+                                                )
+                                                .padding(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            debugInfo.signingCommands.forEach { cmd ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.Top
+                                                ) {
+                                                    Text(
+                                                        if (cmd.success) "✅" else "❌",
+                                                        fontSize = 10.sp
+                                                    )
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            cmd.command,
+                                                            fontSize = 10.sp,
+                                                            color = Color(0xFF76D275),
+                                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                        )
+                                                        if (cmd.output.isNotBlank()) {
+                                                            Text(
+                                                                cmd.output.take(100),
+                                                                fontSize = 9.sp,
+                                                                color = Color(0xFFCFD8DC),
+                                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Verification Result
+                                    if (debugInfo.verificationResult != null) {
+                                        Row {
+                                            Text("🔍 Verification: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                debugInfo.verificationResult,
+                                                fontSize = 11.sp,
+                                                color = if (debugInfo.verificationResult.contains("✅"))
+                                                    Color(0xFF4CAF50) else Color(0xFFFF9800)
+                                            )
+                                        }
+                                    }
+
+                                    // Last Error
+                                    if (debugInfo.lastError != null) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(
+                                                    Color(0xFFFFEBEE),
+                                                    RoundedCornerShape(4.dp)
+                                                )
+                                                .padding(8.dp)
+                                        ) {
+                                            Text("⚠️ ", fontSize = 12.sp)
+                                            Text(
+                                                debugInfo.lastError,
+                                                fontSize = 11.sp,
+                                                color = Color(0xFFD32F2F)
+                                            )
+                                        }
+                                    }
+
+                                    // Extraction Time
+                                    if (debugInfo.extractionTime != null) {
+                                        Text(
+                                            "⏱️ Extracted at: ${debugInfo.extractionTime}",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF9E9E9E)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
