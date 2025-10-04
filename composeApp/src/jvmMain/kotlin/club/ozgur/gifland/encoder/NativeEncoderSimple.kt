@@ -13,43 +13,6 @@ import javax.imageio.ImageIO
 object NativeEncoderSimple {
 
     private var bundledFfmpegPath: File? = null
-    private var wrapperScriptPath: File? = null
-
-    private fun getWrapperScript(): File? {
-        if (wrapperScriptPath?.exists() == true) {
-            return wrapperScriptPath
-        }
-
-        return try {
-            val osName = System.getProperty("os.name").lowercase()
-            if (osName.contains("mac") || osName.contains("darwin")) {
-                val wrapperStream = NativeEncoderSimple::class.java.getResourceAsStream("/native/macos/ffmpeg-wrapper.sh")
-                if (wrapperStream != null) {
-                    val tempWrapper = File(System.getProperty("java.io.tmpdir"), "ffmpeg_wrapper_${System.currentTimeMillis()}.sh")
-                    tempWrapper.deleteOnExit()
-
-                    wrapperStream.use { input ->
-                        tempWrapper.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-
-                    // Make wrapper executable
-                    ProcessBuilder("chmod", "+x", tempWrapper.absolutePath).start().waitFor()
-                    wrapperScriptPath = tempWrapper
-                    Log.d("NativeEncoderSimple", "Wrapper script extracted to: ${tempWrapper.absolutePath}")
-                    tempWrapper
-                } else {
-                    null
-                }
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            Log.e("NativeEncoderSimple", "Could not extract wrapper script", e)
-            null
-        }
-    }
 
     private fun getBundledFfmpeg(): File? {
         if (bundledFfmpegPath?.exists() == true) {
@@ -537,20 +500,39 @@ object NativeEncoderSimple {
             val osName = System.getProperty("os.name").lowercase()
             val isMac = osName.contains("mac") || osName.contains("darwin")
 
-            // Use wrapper script on macOS for bundled FFmpeg to avoid error 134
-            val (executablePath, ffmpegArgs) = if (isMac && ffmpegPath.contains("gifland_ffmpeg")) {
-                val wrapper = getWrapperScript()
-                if (wrapper != null && wrapper.exists()) {
-                    Log.d("NativeEncoderSimple", "Using wrapper script for FFmpeg to bypass signature issues")
-                    FFmpegDebugManager.updateVerification("🛡️ Using wrapper script to bypass signature checks")
-                    Pair(wrapper.absolutePath, listOf(ffmpegPath))
-                } else {
-                    Log.d("NativeEncoderSimple", "Wrapper not available, using FFmpeg directly")
-                    Pair(ffmpegPath, emptyList())
+            // Create dynamic shell script on macOS to run bundled FFmpeg
+            val executableAndArgs: Pair<String, List<String>> = if (isMac && ffmpegPath.contains("gifland_ffmpeg")) {
+                try {
+                    // Create a temporary shell script that will run FFmpeg
+                    val scriptFile = File(System.getProperty("java.io.tmpdir"), "run_ffmpeg_${System.currentTimeMillis()}.sh")
+                    scriptFile.deleteOnExit()
+
+                    // Write script content
+                    scriptFile.writeText("""
+                        #!/bin/sh
+                        # Remove quarantine attribute
+                        xattr -cr "$ffmpegPath" 2>/dev/null || true
+                        # Run FFmpeg with all arguments
+                        exec "$ffmpegPath" "${"$"}@"
+                    """.trimIndent())
+
+                    // Make script executable
+                    ProcessBuilder("chmod", "+x", scriptFile.absolutePath).start().waitFor()
+
+                    Log.d("NativeEncoderSimple", "Using dynamic shell script to bypass signature issues")
+                    FFmpegDebugManager.updateVerification("🛡️ Using dynamic shell script to bypass signature checks")
+
+                    Pair(scriptFile.absolutePath, emptyList<String>())
+                } catch (e: Exception) {
+                    Log.e("NativeEncoderSimple", "Failed to create wrapper script, using FFmpeg directly", e)
+                    Pair(ffmpegPath, emptyList<String>())
                 }
             } else {
-                Pair(ffmpegPath, emptyList())
+                Pair(ffmpegPath, emptyList<String>())
             }
+
+            val executablePath = executableAndArgs.first
+            val ffmpegArgs = executableAndArgs.second
 
             Log.d("NativeEncoderSimple", "Using FFmpeg at: $ffmpegPath for ${frameFiles.size} frames")
 
@@ -725,20 +707,39 @@ object NativeEncoderSimple {
             val osName = System.getProperty("os.name").lowercase()
             val isMac = osName.contains("mac") || osName.contains("darwin")
 
-            // Use wrapper script on macOS for bundled FFmpeg to avoid error 134
-            val (executablePath, ffmpegArgs) = if (isMac && ffmpegPath.contains("gifland_ffmpeg")) {
-                val wrapper = getWrapperScript()
-                if (wrapper != null && wrapper.exists()) {
-                    Log.d("NativeEncoderSimple", "Using wrapper script for FFmpeg to bypass signature issues")
-                    FFmpegDebugManager.updateVerification("🛡️ Using wrapper script to bypass signature checks")
-                    Pair(wrapper.absolutePath, listOf(ffmpegPath))
-                } else {
-                    Log.d("NativeEncoderSimple", "Wrapper not available, using FFmpeg directly")
-                    Pair(ffmpegPath, emptyList())
+            // Create dynamic shell script on macOS to run bundled FFmpeg
+            val executableAndArgs: Pair<String, List<String>> = if (isMac && ffmpegPath.contains("gifland_ffmpeg")) {
+                try {
+                    // Create a temporary shell script that will run FFmpeg
+                    val scriptFile = File(System.getProperty("java.io.tmpdir"), "run_ffmpeg_${System.currentTimeMillis()}.sh")
+                    scriptFile.deleteOnExit()
+
+                    // Write script content
+                    scriptFile.writeText("""
+                        #!/bin/sh
+                        # Remove quarantine attribute
+                        xattr -cr "$ffmpegPath" 2>/dev/null || true
+                        # Run FFmpeg with all arguments
+                        exec "$ffmpegPath" "${"$"}@"
+                    """.trimIndent())
+
+                    // Make script executable
+                    ProcessBuilder("chmod", "+x", scriptFile.absolutePath).start().waitFor()
+
+                    Log.d("NativeEncoderSimple", "Using dynamic shell script to bypass signature issues")
+                    FFmpegDebugManager.updateVerification("🛡️ Using dynamic shell script to bypass signature checks")
+
+                    Pair(scriptFile.absolutePath, emptyList<String>())
+                } catch (e: Exception) {
+                    Log.e("NativeEncoderSimple", "Failed to create wrapper script, using FFmpeg directly", e)
+                    Pair(ffmpegPath, emptyList<String>())
                 }
             } else {
-                Pair(ffmpegPath, emptyList())
+                Pair(ffmpegPath, emptyList<String>())
             }
+
+            val executablePath = executableAndArgs.first
+            val ffmpegArgs = executableAndArgs.second
 
             Log.d("NativeEncoderSimple", "Using FFmpeg at: $ffmpegPath for ${frameFiles.size} frames (GIF)")
 
