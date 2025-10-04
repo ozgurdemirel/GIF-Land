@@ -13,6 +13,43 @@ import javax.imageio.ImageIO
 object NativeEncoderSimple {
 
     private var bundledFfmpegPath: File? = null
+    private var wrapperScriptPath: File? = null
+
+    private fun getWrapperScript(): File? {
+        if (wrapperScriptPath?.exists() == true) {
+            return wrapperScriptPath
+        }
+
+        return try {
+            val osName = System.getProperty("os.name").lowercase()
+            if (osName.contains("mac") || osName.contains("darwin")) {
+                val wrapperStream = NativeEncoderSimple::class.java.getResourceAsStream("/native/macos/ffmpeg-wrapper.sh")
+                if (wrapperStream != null) {
+                    val tempWrapper = File(System.getProperty("java.io.tmpdir"), "ffmpeg_wrapper_${System.currentTimeMillis()}.sh")
+                    tempWrapper.deleteOnExit()
+
+                    wrapperStream.use { input ->
+                        tempWrapper.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+
+                    // Make wrapper executable
+                    ProcessBuilder("chmod", "+x", tempWrapper.absolutePath).start().waitFor()
+                    wrapperScriptPath = tempWrapper
+                    Log.d("NativeEncoderSimple", "Wrapper script extracted to: ${tempWrapper.absolutePath}")
+                    tempWrapper
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("NativeEncoderSimple", "Could not extract wrapper script", e)
+            null
+        }
+    }
 
     private fun getBundledFfmpeg(): File? {
         if (bundledFfmpegPath?.exists() == true) {
@@ -56,7 +93,7 @@ object NativeEncoderSimple {
                         tempFile.setExecutable(true, false)
                     }
 
-                    // macOS specific: Remove quarantine and sign locally to prevent SIGABRT (error 134)
+                    // macOS specific: Try to make FFmpeg work without signing issues
                     if (osName.contains("mac") || osName.contains("darwin")) {
                         Log.d("NativeEncoderSimple", "Preparing FFmpeg for macOS execution...")
 
@@ -263,10 +300,10 @@ object NativeEncoderSimple {
     }
 
     private fun findFfmpeg(): String {
-        getBundledFfmpeg()?.let { if (it.exists()) return it.absolutePath }
-
         val osName = System.getProperty("os.name").lowercase()
         val isWindows = osName.contains("win")
+
+        // First, try to find system FFmpeg (more reliable)
         val systemPaths = if (isWindows) listOf(
             System.getenv("ProgramFiles") + "\\ffmpeg\\bin\\ffmpeg.exe",
             System.getenv("ProgramFiles(x86)") + "\\ffmpeg\\bin\\ffmpeg.exe",
@@ -274,16 +311,27 @@ object NativeEncoderSimple {
         ) else listOf(
             "/usr/local/bin/ffmpeg",
             "/opt/homebrew/bin/ffmpeg",
-            "/usr/bin/ffmpeg"
+            "/usr/bin/ffmpeg",
+            "/opt/local/bin/ffmpeg"  // MacPorts
         )
 
         for (path in systemPaths) {
             if (path != null && File(path).exists()) {
                 Log.d("NativeEncoderSimple", "Using system FFmpeg at: $path")
+                FFmpegDebugManager.updateFFmpegVersion("Using system FFmpeg: $path")
                 return path
             }
         }
 
+        // If no system FFmpeg, try bundled one
+        getBundledFfmpeg()?.let {
+            if (it.exists()) {
+                Log.d("NativeEncoderSimple", "Using bundled FFmpeg at: ${it.absolutePath}")
+                return it.absolutePath
+            }
+        }
+
+        // Last resort: try to find ffmpeg in PATH
         return if (isWindows) "ffmpeg.exe" else "ffmpeg"
     }
 
@@ -486,6 +534,24 @@ object NativeEncoderSimple {
         return try {
             // Use bundled or system ffmpeg
             val ffmpegPath = findFfmpeg()
+            val osName = System.getProperty("os.name").lowercase()
+            val isMac = osName.contains("mac") || osName.contains("darwin")
+
+            // Use wrapper script on macOS for bundled FFmpeg to avoid error 134
+            val (executablePath, ffmpegArgs) = if (isMac && ffmpegPath.contains("gifland_ffmpeg")) {
+                val wrapper = getWrapperScript()
+                if (wrapper != null && wrapper.exists()) {
+                    Log.d("NativeEncoderSimple", "Using wrapper script for FFmpeg to bypass signature issues")
+                    FFmpegDebugManager.updateVerification("🛡️ Using wrapper script to bypass signature checks")
+                    Pair(wrapper.absolutePath, listOf(ffmpegPath))
+                } else {
+                    Log.d("NativeEncoderSimple", "Wrapper not available, using FFmpeg directly")
+                    Pair(ffmpegPath, emptyList())
+                }
+            } else {
+                Pair(ffmpegPath, emptyList())
+            }
+
             Log.d("NativeEncoderSimple", "Using FFmpeg at: $ffmpegPath for ${frameFiles.size} frames")
 
             // Since our minimal FFmpeg doesn't support concat, use image2 pattern matching
@@ -506,23 +572,29 @@ object NativeEncoderSimple {
             onProgress?.invoke(0)
 
             // Build FFmpeg command
-            val ffmpegCommand = mutableListOf(
-                ffmpegPath,
-                "-y", // Overwrite output
-                "-stats", // Enable progress stats output
-                "-threads", "0", // Use all available CPU cores
-                "-framerate", fps.toString(),
-                "-pattern_type", "sequence",
-                "-start_number", "0",
-                "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
-                "-c:v", "libwebp",
+            val ffmpegCommand = mutableListOf<String>().apply {
+                add(executablePath)
+                addAll(ffmpegArgs)
+                addAll(listOf(
+                    "-y", // Overwrite output
+                    "-stats", // Enable progress stats output
+                    "-threads", "0", // Use all available CPU cores
+                    "-framerate", fps.toString(),
+                    "-pattern_type", "sequence",
+                    "-start_number", "0",
+                    "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                    "-c:v", "libwebp"
+                ))
+            }
+
+            ffmpegCommand.addAll(listOf(
                 "-lossless", "0",
                 "-quality", quality.toString(),
                 "-compression_level", "0", // Fastest encoding
                 "-method", "0", // Fastest method
                 "-loop", "0", // Infinite loop
                 outputFile.absolutePath
-            )
+            ))
 
             Log.d("NativeEncoderSimple", "FFmpeg command: ${ffmpegCommand.joinToString(" ")}")
 
@@ -650,6 +722,24 @@ object NativeEncoderSimple {
     ): Result<File> {
         return try {
             val ffmpegPath = findFfmpeg()
+            val osName = System.getProperty("os.name").lowercase()
+            val isMac = osName.contains("mac") || osName.contains("darwin")
+
+            // Use wrapper script on macOS for bundled FFmpeg to avoid error 134
+            val (executablePath, ffmpegArgs) = if (isMac && ffmpegPath.contains("gifland_ffmpeg")) {
+                val wrapper = getWrapperScript()
+                if (wrapper != null && wrapper.exists()) {
+                    Log.d("NativeEncoderSimple", "Using wrapper script for FFmpeg to bypass signature issues")
+                    FFmpegDebugManager.updateVerification("🛡️ Using wrapper script to bypass signature checks")
+                    Pair(wrapper.absolutePath, listOf(ffmpegPath))
+                } else {
+                    Log.d("NativeEncoderSimple", "Wrapper not available, using FFmpeg directly")
+                    Pair(ffmpegPath, emptyList())
+                }
+            } else {
+                Pair(ffmpegPath, emptyList())
+            }
+
             Log.d("NativeEncoderSimple", "Using FFmpeg at: $ffmpegPath for ${frameFiles.size} frames (GIF)")
 
             if (frameFiles.isEmpty()) {
@@ -691,14 +781,17 @@ object NativeEncoderSimple {
             var usePalette = false
 
             try {
-                val paletteCmd = mutableListOf(
-                    ffmpegPath,
-                    "-y",
-                    "-framerate", fps.toString(),
-                    "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
-                    "-vf", "fps=$fps,scale=$width:$height:flags=lanczos,palettegen=stats_mode=diff",
-                    paletteFile.absolutePath
-                )
+                val paletteCmd = mutableListOf<String>().apply {
+                    add(executablePath)
+                    addAll(ffmpegArgs)
+                    addAll(listOf(
+                        "-y",
+                        "-framerate", fps.toString(),
+                        "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                        "-vf", "fps=$fps,scale=$width:$height:flags=lanczos,palettegen=stats_mode=diff",
+                        paletteFile.absolutePath
+                    ))
+                }
 
                 Log.d("NativeEncoderSimple", "Attempting to generate palette for better quality...")
                 val paletteProcess = ProcessBuilder(paletteCmd).start()
@@ -726,26 +819,32 @@ object NativeEncoderSimple {
                     else -> "none"  // Fastest, smallest size
                 }
 
-                mutableListOf(
-                    ffmpegPath,
-                    "-y",
-                    "-framerate", fps.toString(),
-                    "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
-                    "-i", paletteFile.absolutePath,
-                    "-lavfi", "fps=$fps,scale=$width:$height:flags=lanczos [x]; [x][1:v] paletteuse=dither=$dither",
-                    outputFile.absolutePath
-                )
+                mutableListOf<String>().apply {
+                    add(executablePath)
+                    addAll(ffmpegArgs)
+                    addAll(listOf(
+                        "-y",
+                        "-framerate", fps.toString(),
+                        "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                        "-i", paletteFile.absolutePath,
+                        "-lavfi", "fps=$fps,scale=$width:$height:flags=lanczos [x]; [x][1:v] paletteuse=dither=$dither",
+                        outputFile.absolutePath
+                    ))
+                }
             } else {
                 // Direct GIF encoding without palette (works with any FFmpeg build)
-                mutableListOf(
-                    ffmpegPath,
-                    "-y",
-                    "-framerate", fps.toString(),
-                    "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
-                    "-vf", "fps=$fps,scale=$width:$height:flags=lanczos",
-                    "-pix_fmt", "rgb24",
-                    outputFile.absolutePath
-                )
+                mutableListOf<String>().apply {
+                    add(executablePath)
+                    addAll(ffmpegArgs)
+                    addAll(listOf(
+                        "-y",
+                        "-framerate", fps.toString(),
+                        "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                        "-vf", "fps=$fps,scale=$width:$height:flags=lanczos",
+                        "-pix_fmt", "rgb24",
+                        outputFile.absolutePath
+                    ))
+                }
             }
 
             Log.d("NativeEncoderSimple", "Encoding GIF ${if (usePalette) "with palette" else "directly"}...")
