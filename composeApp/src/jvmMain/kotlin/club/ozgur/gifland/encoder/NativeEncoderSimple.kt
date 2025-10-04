@@ -131,14 +131,13 @@ object NativeEncoderSimple {
                                 // If simple signing failed, try with more options
                                 Log.d("NativeEncoderSimple", "Simple signing failed, trying with timestamp and hardened runtime...")
 
-                                // Try with timestamp and hardened runtime disabled
+                                // Try WITHOUT hardened runtime (which can cause SIGKILL/error 137)
                                 val advancedSignProcess = ProcessBuilder(
                                     "codesign",
                                     "--force",
                                     "--deep",
                                     "--sign", "-",
                                     "--timestamp=none",
-                                    "--options", "runtime",
                                     tempFile.absolutePath
                                 ).start()
 
@@ -148,9 +147,9 @@ object NativeEncoderSimple {
                                 val advancedSignExitCode = advancedSignProcess.exitValue()
 
                                 FFmpegDebugManager.addCommand(
-                                    "codesign --force --deep --sign - --timestamp=none --options runtime ${tempFile.name}",
+                                    "codesign --force --deep --sign - --timestamp=none ${tempFile.name}",
                                     advancedSignExitCode,
-                                    advancedSignOutput.ifBlank { "Success - advanced signature added" }
+                                    advancedSignOutput.ifBlank { "Success - deep signature without hardened runtime" }
                                 )
                             }
                         }.onFailure { e ->
@@ -205,22 +204,20 @@ object NativeEncoderSimple {
                                     ).start()
                                     bypassProcess.waitFor(5, TimeUnit.SECONDS)
 
-                                    // Re-sign with more permissive options
+                                    // Re-sign WITHOUT hardened runtime to avoid error 137
                                     val resignProcess = ProcessBuilder(
                                         "codesign",
                                         "--force",
                                         "--deep",
                                         "--sign", "-",
-                                        "--options", "runtime",
-                                        "--entitlements", "/dev/null",
                                         tempFile.absolutePath
                                     ).start()
                                     resignProcess.waitFor(5, TimeUnit.SECONDS)
 
                                     FFmpegDebugManager.addCommand(
-                                        "codesign --force --deep --sign - --options runtime",
+                                        "codesign --force --deep --sign - (without runtime)",
                                         resignProcess.exitValue(),
-                                        "Attempting runtime signature with entitlements"
+                                        "Attempting signature without hardened runtime"
                                     )
                                 }
                             } else {
@@ -613,6 +610,11 @@ object NativeEncoderSimple {
                         Log.e("NativeEncoderSimple", "FFmpeg crashed with error 134 (SIGABRT) - This is a code signing issue on macOS")
                         FFmpegDebugManager.setError("Error 134: FFmpeg signature verification failed. This Mac may have stricter security settings.")
                         "FFmpeg exited with error code: 134"
+                    }
+                    exitCode == 137 -> {
+                        Log.e("NativeEncoderSimple", "FFmpeg crashed with error 137 (SIGKILL) - Process was terminated by the system")
+                        FFmpegDebugManager.setError("Error 137: FFmpeg was killed by the system. This may be due to memory limits or security restrictions.")
+                        "FFmpeg exited with error code: 137"
                     }
                     !success -> "FFmpeg process timed out after 540 seconds"
                     exitCode != 0 -> "FFmpeg exited with error code: $exitCode"
