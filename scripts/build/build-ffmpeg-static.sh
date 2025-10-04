@@ -44,10 +44,21 @@ NUM_CORES=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if [ "$ARCH" = "arm64" ]; then
     echo "🎯 Building for Apple Silicon (arm64)"
     ARCH_FLAGS="--enable-cross-compile --arch=arm64"
+    # Extra flags for ARM64
+    export CFLAGS="$CFLAGS -arch arm64"
+    export LDFLAGS="$LDFLAGS -arch arm64"
 else
     echo "🎯 Building for Intel (x86_64)"
     ARCH_FLAGS="--arch=x86_64"
+    export CFLAGS="$CFLAGS -arch x86_64"
+    export LDFLAGS="$LDFLAGS -arch x86_64"
 fi
+
+echo "Build environment:"
+echo "  Architecture: $ARCH"
+echo "  CPU cores: $NUM_CORES"
+echo "  CFLAGS: $CFLAGS"
+echo "  LDFLAGS: $LDFLAGS"
 
 cd "$SOURCES_DIR"
 
@@ -127,8 +138,21 @@ strip composeApp/src/jvmMain/resources/native/macos/ffmpeg
 # Check the result
 echo "✅ Static FFmpeg built successfully!"
 echo "📏 Size: $(ls -lh composeApp/src/jvmMain/resources/native/macos/ffmpeg | awk '{print $5}')"
+echo "🏗️ Architecture check:"
+file composeApp/src/jvmMain/resources/native/macos/ffmpeg
+lipo -info composeApp/src/jvmMain/resources/native/macos/ffmpeg 2>/dev/null || true
 echo "🔍 Dependencies check:"
 otool -L composeApp/src/jvmMain/resources/native/macos/ffmpeg | grep -v "/usr/lib\|/System"
+
+# Verify it's for the correct architecture
+BUILT_ARCH=$(lipo -archs composeApp/src/jvmMain/resources/native/macos/ffmpeg 2>/dev/null || echo "unknown")
+if [ "$ARCH" = "arm64" ] && [ "$BUILT_ARCH" != "arm64" ]; then
+    echo "❌ ERROR: Built for $BUILT_ARCH but expected arm64!"
+    exit 1
+elif [ "$ARCH" = "x86_64" ] && [ "$BUILT_ARCH" != "x86_64" ]; then
+    echo "❌ ERROR: Built for $BUILT_ARCH but expected x86_64!"
+    exit 1
+fi
 
 # Clean up build directory (optional)
 echo "🧹 Cleaning build directory..."

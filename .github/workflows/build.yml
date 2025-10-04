@@ -8,9 +8,17 @@ on:
 
 jobs:
   build-ffmpeg-silicon:
-    runs-on: macos-latest
+    runs-on: macos-14  # macos-14 is M1/ARM64, macos-13 is Intel
     steps:
       - uses: actions/checkout@v4
+      - name: Verify Architecture
+        run: |
+          echo "Runner architecture: $(uname -m)"
+          echo "Should be 'arm64' for Apple Silicon"
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "ERROR: Not running on ARM64/Apple Silicon!"
+            exit 1
+          fi
       - name: Install build dependencies
         run: |
           # Install required tools for FFmpeg build
@@ -31,7 +39,7 @@ jobs:
 
   macos-silicon:
     needs: build-ffmpeg-silicon
-    runs-on: macos-latest
+    runs-on: macos-14  # macos-14 is M1/ARM64, macos-13 is Intel
     permissions:
       contents: write
     steps:
@@ -41,6 +49,14 @@ jobs:
         with:
           name: ffmpeg-mac-silicon
           path: composeApp/src/jvmMain/resources/native/macos/
+      - name: Verify FFmpeg and Architecture
+        run: |
+          echo "Runner architecture: $(uname -m)"
+          echo "FFmpeg info:"
+          file composeApp/src/jvmMain/resources/native/macos/ffmpeg || echo "FFmpeg not found"
+          # Make it executable and remove quarantine
+          chmod +x composeApp/src/jvmMain/resources/native/macos/ffmpeg
+          xattr -cr composeApp/src/jvmMain/resources/native/macos/ffmpeg || true
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
