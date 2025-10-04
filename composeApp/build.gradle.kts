@@ -70,12 +70,6 @@ kotlin {
                     implementation("ws.schild:jave-nativebin-linux64:3.5.0")
                 }
             }
-
-            // Video/WebP & MP4 processing - now using native ffmpeg
-            // implementation(libs.javacv.platform) // REMOVED - using native encoder
-
-            // Note: Robot API is part of Java AWT, no additional dependency needed
-            // We'll use java.awt.Robot for screen capture
         }
     }
 }
