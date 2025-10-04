@@ -96,6 +96,13 @@ cd ffmpeg
     --enable-libx264 \
     --enable-libwebp \
     --enable-libvpx \
+    --enable-filters \
+    --enable-filter=palettegen \
+    --enable-filter=paletteuse \
+    --enable-filter=scale \
+    --enable-filter=fps \
+    --enable-filter=format \
+    --enable-swscale \
     --disable-doc \
     --disable-ffplay \
     --disable-ffprobe \

@@ -467,46 +467,69 @@ object NativeEncoderSimple {
             // Start progress at 0
             onProgress?.invoke(0)
 
-            // Generate palette first for better quality
+            // Try to generate palette first for better quality
             val paletteFile = File(frameDir, "palette.png")
-            val paletteCmd = mutableListOf(
-                ffmpegPath,
-                "-y",
-                "-framerate", fps.toString(),
-                "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
-                "-vf", "fps=$fps,scale=$width:$height:flags=lanczos,palettegen=stats_mode=diff",
-                paletteFile.absolutePath
-            )
+            var usePalette = false
 
-            Log.d("NativeEncoderSimple", "Generating palette...")
-            val paletteProcess = ProcessBuilder(paletteCmd).start()
-            val paletteSuccess = paletteProcess.waitFor(30, TimeUnit.SECONDS)
+            try {
+                val paletteCmd = mutableListOf(
+                    ffmpegPath,
+                    "-y",
+                    "-framerate", fps.toString(),
+                    "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                    "-vf", "fps=$fps,scale=$width:$height:flags=lanczos,palettegen=stats_mode=diff",
+                    paletteFile.absolutePath
+                )
 
-            if (!paletteSuccess || paletteProcess.exitValue() != 0) {
-                Log.e("NativeEncoderSimple", "Failed to generate palette")
-                return Result.failure(Exception("Failed to generate GIF palette"))
+                Log.d("NativeEncoderSimple", "Attempting to generate palette for better quality...")
+                val paletteProcess = ProcessBuilder(paletteCmd).start()
+                val paletteSuccess = paletteProcess.waitFor(30, TimeUnit.SECONDS)
+
+                if (paletteSuccess && paletteProcess.exitValue() == 0 && paletteFile.exists()) {
+                    Log.d("NativeEncoderSimple", "Palette generated successfully")
+                    usePalette = true
+                    onProgress?.invoke(30) // Palette done
+                } else {
+                    Log.d("NativeEncoderSimple", "Palette generation failed, will use direct GIF encoding")
+                    paletteFile.delete() // Clean up any partial file
+                }
+            } catch (e: Exception) {
+                Log.d("NativeEncoderSimple", "Palette generation error: ${e.message}, falling back to direct encoding")
+                usePalette = false
             }
 
-            onProgress?.invoke(30) // Palette done
+            // Generate GIF with or without palette
+            val gifCmd = if (usePalette) {
+                // Use palette for better quality
+                val dither = when {
+                    quality >= 40 -> "floyd_steinberg"  // Best quality dithering
+                    quality >= 20 -> "sierra2_4a"  // Balanced
+                    else -> "none"  // Fastest, smallest size
+                }
 
-            // Now generate GIF using palette
-            val dither = when {
-                quality >= 40 -> "floyd_steinberg"  // Best quality dithering
-                quality >= 20 -> "sierra2_4a"  // Balanced
-                else -> "none"  // Fastest, smallest size
+                mutableListOf(
+                    ffmpegPath,
+                    "-y",
+                    "-framerate", fps.toString(),
+                    "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                    "-i", paletteFile.absolutePath,
+                    "-lavfi", "fps=$fps,scale=$width:$height:flags=lanczos [x]; [x][1:v] paletteuse=dither=$dither",
+                    outputFile.absolutePath
+                )
+            } else {
+                // Direct GIF encoding without palette (works with any FFmpeg build)
+                mutableListOf(
+                    ffmpegPath,
+                    "-y",
+                    "-framerate", fps.toString(),
+                    "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                    "-vf", "fps=$fps,scale=$width:$height:flags=lanczos",
+                    "-pix_fmt", "rgb24",
+                    outputFile.absolutePath
+                )
             }
 
-            val gifCmd = mutableListOf(
-                ffmpegPath,
-                "-y",
-                "-framerate", fps.toString(),
-                "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
-                "-i", paletteFile.absolutePath,
-                "-lavfi", "fps=$fps,scale=$width:$height:flags=lanczos [x]; [x][1:v] paletteuse=dither=$dither",
-                outputFile.absolutePath
-            )
-
-            Log.d("NativeEncoderSimple", "Encoding GIF with dither=$dither...")
+            Log.d("NativeEncoderSimple", "Encoding GIF ${if (usePalette) "with palette" else "directly"}...")
 
             val process = ProcessBuilder(gifCmd)
                 .redirectErrorStream(false).start()
