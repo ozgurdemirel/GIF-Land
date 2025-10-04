@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -61,6 +62,7 @@ object MainScreen : Screen {
             maxDuration = currentSettings.maxDuration
         }
         val lastSavedFile by recorder.lastSavedFile.collectAsState()
+        val lastError by recorder.lastError.collectAsState()
 
         // Debug logging for lastSavedFile state
         LaunchedEffect(lastSavedFile) {
@@ -80,6 +82,19 @@ object MainScreen : Screen {
             color = Color(0xFFF8FAFC)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                if (lastError != null) {
+                    AlertDialog(
+                        onDismissRequest = { recorder.clearError() },
+                        confirmButton = {
+                            TextButton(onClick = { recorder.clearError() }) {
+                                Text("OK")
+                            }
+                        },
+                        title = { Text("Hata") },
+                        text = { Text(lastError ?: "Bilinmeyen hata") },
+                        properties = DialogProperties(dismissOnClickOutside = true)
+                    )
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -186,6 +201,7 @@ object MainScreen : Screen {
                                 when {
                                     isSaving -> Color(0xFF4FC3F7)
                                     isRecording -> Color(0xFFFF7043)
+                                    lastError != null -> Color(0xFFFF5252)
                                     else -> Color(0xFF66BB6A)
                                 }
                             )
@@ -222,6 +238,26 @@ object MainScreen : Screen {
                                                 "Saving ${format.name}... ${recordingState.saveProgress}%",
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                    lastError != null -> {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                "⚠",
+                                                fontSize = 20.sp,
+                                                color = Color(0xFFFF5252),
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                lastError ?: "Error",
+                                                fontSize = 14.sp,
+                                                color = Color(0xFFB00020),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                     }

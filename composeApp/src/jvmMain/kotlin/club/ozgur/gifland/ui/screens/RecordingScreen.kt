@@ -22,6 +22,7 @@ import club.ozgur.gifland.LocalRecorder
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import club.ozgur.gifland.util.Log
+import androidx.compose.ui.window.DialogProperties
 
 object RecordingScreen : Screen {
 
@@ -31,6 +32,7 @@ object RecordingScreen : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val recorder = LocalRecorder.current
         val recordingState by recorder.state.collectAsState()
+        val lastError by recorder.lastError.collectAsState()
 
 
         // İlk açılışta kayıt yapıyor olmalıyız
@@ -68,6 +70,17 @@ object RecordingScreen : Screen {
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                if (lastError != null) {
+                    AlertDialog(
+                        onDismissRequest = { recorder.clearError() },
+                        confirmButton = {
+                            TextButton(onClick = { recorder.clearError() }) { Text("OK") }
+                        },
+                        title = { Text("Hata") },
+                        text = { Text(lastError ?: "Bilinmeyen hata") },
+                        properties = DialogProperties(dismissOnClickOutside = true)
+                    )
+                }
                 // Kayıt başlığı
                 Card(
                     modifier = Modifier

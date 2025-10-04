@@ -10,6 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.awt.GraphicsEnvironment
 import java.awt.Point
 import java.awt.Rectangle
@@ -74,6 +75,10 @@ class Recorder {
     private val _lastSavedFile = MutableStateFlow<File?>(null)
     val lastSavedFile: StateFlow<File?> = _lastSavedFile
 
+    // Store last error for surfacing issues in UI
+    private val _lastError = MutableStateFlow<String?>(null)
+    val lastError: StateFlow<String?> = _lastError.asStateFlow()
+
     init {
         Log.d("Recorder", "========================================")
         Log.d("Recorder", "🚀 NEW RECORDER INSTANCE CREATED")
@@ -97,6 +102,9 @@ class Recorder {
         Log.d("Recorder", "Max Duration: ${settings.maxDuration}s")
         Log.d("Recorder", "========================================")
 
+        // Clear previous error before starting a new session
+        _lastError.value = null
+
         // Proactively cleanup any stale temp folders from previous abnormal exits
         cleanupStaleTempDirs()
 
@@ -119,7 +127,15 @@ class Recorder {
         val center = Point(captureRect.x + captureRect.width / 2, captureRect.y + captureRect.height / 2)
         val targetScreen = screens.find { it.defaultConfiguration.bounds.contains(center) } ?: screens[0]
         Log.d("Recorder", "captureRect=$captureRect center=$center targetScreen=${targetScreen.debugId()} bounds=${targetScreen.defaultConfiguration.bounds}")
-        val robot = Robot(targetScreen)
+        val robot = try {
+            Robot(targetScreen)
+        } catch (e: Exception) {
+            Log.e("Recorder", "Failed to create Robot for screen capture", e)
+            _state.value = _state.value.copy(isRecording = false)
+            _lastError.value = "Ekran kaydı başlatılamadı: Erişim izni veya ekran yakalama hatası"
+            onComplete(Result.failure(e))
+            return
+        }
 
 		// Prepare temp directory for disk-backed frames
 		val sessionStamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
@@ -228,6 +244,7 @@ class Recorder {
                         // If Robot fails (monitor change or permission), stop and surface error
                         Log.e("Recorder", "Frame capture error", e)
                         _state.value = _state.value.copy(isRecording = false)
+                        _lastError.value = e.message ?: "Bilinmeyen ekran yakalama hatası"
                         withContext(Dispatchers.Main) { onComplete(Result.failure(e)) }
                         cancel("Robot capture failed", e)
                     }
@@ -275,6 +292,7 @@ class Recorder {
 
         if (mp4Session == null && frames.isEmpty() && frameFiles.isEmpty()) {
             Log.e("Recorder", "No frames captured at stop")
+            _lastError.value = "Kayıt başarısız: Hiç kare yakalanamadı. Erişim izinlerini ve ekran seçimini kontrol edin."
             return Result.failure(Exception("No frames captured"))
         }
 
@@ -413,6 +431,7 @@ class Recorder {
                 }
             } catch (e: Exception) {
                 Log.e("Recorder", "Error during save operation", e)
+                _lastError.value = e.message ?: "Kayıt kaydedilemedi"
                 cleanupTemp() // Try to cleanup even on error
                 Result.failure(e)
             }
@@ -421,10 +440,13 @@ class Recorder {
         _state.value = _state.value.copy(isSaving = false, saveProgress = 0)
         Log.d("Recorder", "Saving complete, state updated: isSaving=false, saveProgress=0")
 
-        // Store last saved file on success
+        // Store last saved file on success; set error on failure
         saveResult.onSuccess { file ->
             _lastSavedFile.value = file
             Log.d("Recorder", "Last saved file updated: ${file.absolutePath}")
+            _lastError.value = null
+        }.onFailure { e ->
+            _lastError.value = e.message ?: "Kayıt kaydedilemedi"
         }
 
         return saveResult
@@ -505,6 +527,12 @@ class Recorder {
         droppedFrames = 0
         // NOTE: _lastSavedFile is intentionally NOT reset here
         // This preserves the "Open Folder" button functionality after recording
+        // But clear any previous error to avoid confusing the user for next session
+        _lastError.value = null
+    }
+
+    fun clearError() {
+        _lastError.value = null
     }
 }
 
