@@ -97,7 +97,16 @@ object NativeEncoderSimple {
                         // Step 2: Add local ad-hoc signature (creates new signature valid on THIS machine)
                         runCatching {
                             Log.d("NativeEncoderSimple", "Adding local ad-hoc signature to FFmpeg")
-                            // First try simple ad-hoc signature (more compatible)
+
+                            // First, remove any existing signature
+                            val removeSignProcess = ProcessBuilder(
+                                "codesign",
+                                "--remove-signature",
+                                tempFile.absolutePath
+                            ).start()
+                            removeSignProcess.waitFor(5, TimeUnit.SECONDS)
+
+                            // Try simple ad-hoc signature (more compatible)
                             val signProcess = ProcessBuilder(
                                 "codesign",
                                 "--force",           // Replace any existing signature
@@ -120,24 +129,28 @@ object NativeEncoderSimple {
                                 Log.d("NativeEncoderSimple", "Successfully signed FFmpeg locally")
                             } else {
                                 // If simple signing failed, try with more options
-                                Log.d("NativeEncoderSimple", "Simple signing failed, trying with deep signing...")
-                                val deepSignProcess = ProcessBuilder(
+                                Log.d("NativeEncoderSimple", "Simple signing failed, trying with timestamp and hardened runtime...")
+
+                                // Try with timestamp and hardened runtime disabled
+                                val advancedSignProcess = ProcessBuilder(
                                     "codesign",
                                     "--force",
-                                    "--deep",            // Sign nested code
+                                    "--deep",
                                     "--sign", "-",
+                                    "--timestamp=none",
+                                    "--options", "runtime",
                                     tempFile.absolutePath
                                 ).start()
 
-                                val deepSignOutput = deepSignProcess.inputStream.readBytes().decodeToString() +
-                                                   deepSignProcess.errorStream.readBytes().decodeToString()
-                                deepSignProcess.waitFor(10, TimeUnit.SECONDS)
-                                val deepSignExitCode = deepSignProcess.exitValue()
+                                val advancedSignOutput = advancedSignProcess.inputStream.readBytes().decodeToString() +
+                                                       advancedSignProcess.errorStream.readBytes().decodeToString()
+                                advancedSignProcess.waitFor(10, TimeUnit.SECONDS)
+                                val advancedSignExitCode = advancedSignProcess.exitValue()
 
                                 FFmpegDebugManager.addCommand(
-                                    "codesign --force --deep --sign - ${tempFile.name}",
-                                    deepSignExitCode,
-                                    deepSignOutput.ifBlank { "Success - deep signature added" }
+                                    "codesign --force --deep --sign - --timestamp=none --options runtime ${tempFile.name}",
+                                    advancedSignExitCode,
+                                    advancedSignOutput.ifBlank { "Success - advanced signature added" }
                                 )
                             }
                         }.onFailure { e ->
@@ -171,10 +184,50 @@ object NativeEncoderSimple {
                         runCatching {
                             val versionProcess = ProcessBuilder(tempFile.absolutePath, "-version").start()
                             val versionOutput = versionProcess.inputStream.bufferedReader().readLines()
+                            val versionError = versionProcess.errorStream.bufferedReader().readLines()
                             versionProcess.waitFor(2, TimeUnit.SECONDS)
+                            val versionExitCode = versionProcess.exitValue()
 
-                            if (versionOutput.isNotEmpty()) {
+                            if (versionExitCode == 0 && versionOutput.isNotEmpty()) {
                                 FFmpegDebugManager.updateFFmpegVersion(versionOutput.first())
+                            } else if (versionExitCode == 134) {
+                                // Error 134 detected during version check
+                                Log.e("NativeEncoderSimple", "FFmpeg crashed with error 134 during version check")
+                                FFmpegDebugManager.setError("FFmpeg error 134 - Signature issue detected. Trying additional fixes...")
+
+                                // Try additional fix: remove code signature requirement
+                                runCatching {
+                                    Log.d("NativeEncoderSimple", "Attempting to bypass signature requirement...")
+                                    val bypassProcess = ProcessBuilder(
+                                        "codesign",
+                                        "--remove-signature",
+                                        tempFile.absolutePath
+                                    ).start()
+                                    bypassProcess.waitFor(5, TimeUnit.SECONDS)
+
+                                    // Re-sign with more permissive options
+                                    val resignProcess = ProcessBuilder(
+                                        "codesign",
+                                        "--force",
+                                        "--deep",
+                                        "--sign", "-",
+                                        "--options", "runtime",
+                                        "--entitlements", "/dev/null",
+                                        tempFile.absolutePath
+                                    ).start()
+                                    resignProcess.waitFor(5, TimeUnit.SECONDS)
+
+                                    FFmpegDebugManager.addCommand(
+                                        "codesign --force --deep --sign - --options runtime",
+                                        resignProcess.exitValue(),
+                                        "Attempting runtime signature with entitlements"
+                                    )
+                                }
+                            } else {
+                                Log.e("NativeEncoderSimple", "FFmpeg version check failed with exit code: $versionExitCode")
+                                if (versionError.isNotEmpty()) {
+                                    Log.e("NativeEncoderSimple", "FFmpeg version error: ${versionError.joinToString("\n")}")
+                                }
                             }
 
                             // Get architecture info
@@ -185,6 +238,15 @@ object NativeEncoderSimple {
                             if (fileOutput.isNotBlank()) {
                                 val archInfo = fileOutput.substringAfter(":").trim()
                                 FFmpegDebugManager.updateArchitecture(archInfo)
+
+                                // Check if architecture matches system
+                                val systemArch = System.getProperty("os.arch")
+                                val isM1 = systemArch == "aarch64" || systemArch.contains("arm")
+
+                                if ((isM1 && !archInfo.contains("arm64")) || (!isM1 && archInfo.contains("arm64"))) {
+                                    Log.e("NativeEncoderSimple", "Architecture mismatch! System: $systemArch, FFmpeg: $archInfo")
+                                    FFmpegDebugManager.setError("Architecture mismatch: System is $systemArch but FFmpeg is $archInfo")
+                                }
                             }
                         }
                     }
@@ -474,6 +536,9 @@ object NativeEncoderSimple {
             val outputBuilder = StringBuilder()
             val totalFrames = frameFiles.size
 
+            // Track if process crashed with error 134
+            var crashedWith134 = false
+
             Thread {
                 try {
                     val reader = process.errorStream.bufferedReader() // FFmpeg outputs to stderr
@@ -482,6 +547,15 @@ object NativeEncoderSimple {
 
                     while (reader.readLine().also { line = it } != null) {
                         outputBuilder.appendLine(line)
+
+                        // Check for error 134 symptoms
+                        if (line?.contains("signal 6") == true ||
+                            line?.contains("SIGABRT") == true ||
+                            line?.contains("Abort trap") == true) {
+                            Log.e("NativeEncoderSimple", "FFmpeg crashed with SIGABRT (error 134): $line")
+                            crashedWith134 = true
+                            FFmpegDebugManager.setError("FFmpeg crashed with error 134 (SIGABRT) - code signing issue")
+                        }
 
                         // FFmpeg outputs: "frame=   10 fps=..."
                         val framePattern = Regex("frame=\\s*(\\d+)")
@@ -535,6 +609,11 @@ object NativeEncoderSimple {
             } else {
                 val exitCode = if (success) process.exitValue() else -1
                 val errorMsg = when {
+                    exitCode == 134 || crashedWith134 -> {
+                        Log.e("NativeEncoderSimple", "FFmpeg crashed with error 134 (SIGABRT) - This is a code signing issue on macOS")
+                        FFmpegDebugManager.setError("Error 134: FFmpeg signature verification failed. This Mac may have stricter security settings.")
+                        "FFmpeg exited with error code: 134"
+                    }
                     !success -> "FFmpeg process timed out after 540 seconds"
                     exitCode != 0 -> "FFmpeg exited with error code: $exitCode"
                     !outputFile.exists() -> "Output file was not created"
