@@ -13,74 +13,11 @@ pushd "$repo_root" >/dev/null
 cleanup() { popd >/dev/null || true; }
 trap cleanup EXIT
 
-RESOURCE_DIR="composeApp/src/jvmMain/resources/native/windows"
-FFMPEG_EXE="$RESOURCE_DIR/ffmpeg.exe"
+echo "🔨 Building complete package for Windows..."
 
-mkdir -p "$RESOURCE_DIR"
-
-if [ ! -f "$FFMPEG_EXE" ]; then
-  echo "🎬 Fetching prebuilt FFmpeg for Windows..."
-
-  tmp_dir="$(mktemp -d)"
-  zip_path="$tmp_dir/ffmpeg.zip"
-  extract_dir="$tmp_dir/extracted"
-  mkdir -p "$extract_dir"
-
-  # Try known mirrors in order (stable public builds)
-  urls=(
-    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-    "https://github.com/GyanD/codexffmpeg/releases/latest/download/ffmpeg-essentials_build.zip"
-    "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-n6.1.1-essentials_build.zip"
-  )
-
-  download_ok=false
-  for u in "${urls[@]}"; do
-    echo "Attempting download: $u"
-    if curl -L --fail -o "$zip_path" "$u"; then
-      download_ok=true
-      break
-    fi
-  done
-
-  if [ "$download_ok" != true ]; then
-    echo "❌ Failed to download FFmpeg from known mirrors" >&2
-    exit 1
-  fi
-
-  echo "📦 Extracting FFmpeg archive..."
-  # Prefer unzip, fallback to PowerShell Expand-Archive
-  if command -v unzip >/dev/null 2>&1; then
-    unzip -q "$zip_path" -d "$extract_dir"
-  else
-    # Use PowerShell to extract zip
-    powershell -NoProfile -Command "Expand-Archive -Path '$zip_path' -DestinationPath '$extract_dir' -Force" || {
-      echo "❌ Failed to extract FFmpeg archive" >&2
-      exit 1
-    }
-  fi
-
-  echo "🔎 Locating ffmpeg.exe..."
-  ffmpeg_found=""
-  while IFS= read -r -d '' f; do
-    ffmpeg_found="$f"
-    break
-  done < <(find "$extract_dir" -type f -iname ffmpeg.exe -print0)
-
-  if [ -z "$ffmpeg_found" ]; then
-    echo "❌ ffmpeg.exe not found after extraction" >&2
-    exit 1
-  fi
-
-  echo "📋 Copying ffmpeg.exe to resources: $FFMPEG_EXE"
-  cp "$ffmpeg_found" "$FFMPEG_EXE"
-fi
-
-if [ -f "$FFMPEG_EXE" ]; then
-  echo "✅ FFmpeg ready at: $FFMPEG_EXE (size: $(ls -lh "$FFMPEG_EXE" | awk '{print $5}'))"
-else
-  echo "❌ FFmpeg setup failed" >&2
-  exit 1
-fi
+# JAVE2 provides signed FFmpeg binaries - no need to download or bundle
+echo "✅ Using JAVE2 with signed FFmpeg binaries for Windows"
+echo "✅ No FFmpeg downloading or bundling required"
 
 # Build Windows installer (MSI)
 echo "🧹 Cleaning previous builds..."

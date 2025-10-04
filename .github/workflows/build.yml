@@ -7,68 +7,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-ffmpeg-silicon:
-    runs-on: macos-14  # macos-14 is M1/ARM64, macos-13 is Intel
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify Architecture
-        run: |
-          echo "Runner architecture: $(uname -m)"
-          echo "Should be 'arm64' for Apple Silicon"
-          if [ "$(uname -m)" != "arm64" ]; then
-            echo "ERROR: Not running on ARM64/Apple Silicon!"
-            exit 1
-          fi
-      - name: Install build dependencies
-        run: |
-          # Install required tools for FFmpeg build
-          brew install pkg-config nasm yasm automake autoconf libtool
-          # Verify tools
-          echo "Verifying installed tools..."
-          which git make strip otool pkg-config nasm yasm automake autoconf
-      - name: Build Static FFmpeg for Mac Silicon
-        run: |
-          chmod +x ./scripts/build/build-ffmpeg-static.sh
-          ./scripts/build/build-ffmpeg-static.sh
-
-          # Just ensure it's executable and clean
-          echo "📝 Preparing FFmpeg binary..."
-          chmod +x composeApp/src/jvmMain/resources/native/macos/ffmpeg
-          # Remove any extended attributes from build process
-          xattr -cr composeApp/src/jvmMain/resources/native/macos/ffmpeg 2>/dev/null || true
-
-          # Verify architecture
-          echo "✅ FFmpeg info:"
-          file composeApp/src/jvmMain/resources/native/macos/ffmpeg
-      - name: Upload FFmpeg artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ffmpeg-mac-silicon
-          path: composeApp/src/jvmMain/resources/native/macos/ffmpeg
-          retention-days: 7
-
   macos-silicon:
-    needs: build-ffmpeg-silicon
     runs-on: macos-14  # macos-14 is M1/ARM64, macos-13 is Intel
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Download FFmpeg artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ffmpeg-mac-silicon
-          path: composeApp/src/jvmMain/resources/native/macos/
-      - name: Verify FFmpeg and Architecture
-        run: |
-          echo "Runner architecture: $(uname -m)"
-          echo "FFmpeg info:"
-          file composeApp/src/jvmMain/resources/native/macos/ffmpeg || echo "FFmpeg not found"
-
-          # Make it executable and clean
-          chmod +x composeApp/src/jvmMain/resources/native/macos/ffmpeg
-          # Note: Signing will happen at runtime on the user's machine
-          echo "ℹ️  FFmpeg will be signed locally when first run"
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
@@ -78,8 +22,8 @@ jobs:
       - name: Build macOS DMG
         run: |
           chmod +x ./scripts/**/*.sh
-          # FFmpeg already exists from artifact, just build DMG
-          ./scripts/package/create-full-package.sh --skip-ffmpeg-build
+          # JAVE2 provides signed FFmpeg binaries - no need to build
+          ./scripts/package/create-full-package.sh
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
@@ -101,6 +45,7 @@ jobs:
       - name: Build macOS Intel DMG
         run: |
           chmod +x ./scripts/**/*.sh
+          # JAVE2 provides signed FFmpeg binaries - no need to build
           ./scripts/package/create-full-package-mac-intel.sh
       - name: Upload macOS Intel artifact
         uses: actions/upload-artifact@v4
@@ -133,6 +78,7 @@ jobs:
         shell: bash
         run: |
           chmod +x ./scripts/**/*.sh || true
+          # JAVE2 provides signed FFmpeg binaries - no need to build
           ./scripts/package/create-full-package-windows.sh
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

@@ -48,6 +48,29 @@ kotlin {
             // Global mouse/keyboard tracking
             implementation(libs.jnativehook)
 
+            // JAVE2 - FFmpeg Java wrapper (includes signed binaries for macOS)
+            implementation("ws.schild:jave-core:3.5.0")
+
+            // Platform-specific FFmpeg binaries
+            val osName = System.getProperty("os.name").lowercase()
+            val osArch = System.getProperty("os.arch").lowercase()
+            when {
+                osName.contains("mac") && (osArch == "aarch64" || osArch.contains("arm")) -> {
+                    // Apple Silicon (M1/M2/M3)
+                    implementation("ws.schild:jave-nativebin-osxm1:3.5.0")
+                }
+                osName.contains("mac") -> {
+                    // Intel Mac
+                    implementation("ws.schild:jave-nativebin-osx64:3.5.0")
+                }
+                osName.contains("win") -> {
+                    implementation("ws.schild:jave-nativebin-win64:3.5.0")
+                }
+                else -> {
+                    implementation("ws.schild:jave-nativebin-linux64:3.5.0")
+                }
+            }
+
             // Video/WebP & MP4 processing - now using native ffmpeg
             // implementation(libs.javacv.platform) // REMOVED - using native encoder
 

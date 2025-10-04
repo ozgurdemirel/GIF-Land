@@ -2,6 +2,7 @@ package club.ozgur.gifland.core
 
 import club.ozgur.gifland.capture.ScreenCapture
 import club.ozgur.gifland.encoder.NativeEncoderSimple
+import club.ozgur.gifland.encoder.JAVEEncoder
 import club.ozgur.gifland.encoder.NativeRecorderClient
 import club.ozgur.gifland.ui.components.CaptureArea
 import club.ozgur.gifland.util.debugId
@@ -312,26 +313,41 @@ class Recorder {
                             settings.fps
                         }
                         Log.d("Recorder", "WebP encoding: frames=${frameFiles.size}, duration=${actualDurationMs}ms, actualFps=$actualFps (target was ${settings.fps})")
-                        // Use file-based encoding to avoid memory issues
-                        val result = NativeEncoderSimple.encodeWebPFromFiles(
-                            frameFiles = frameFiles,
-                            outputFile = outputFile,
-                            // WebP kalite ayarı: Hız için optimize edildi
-                            // Lower quality = faster encoding
-                            quality = when {
-                                settings.quality >= 45 -> 75  // High quality (was 90)
-                                settings.quality >= 35 -> 60  // Good quality (was 80)
-                                settings.quality >= 25 -> 45  // Medium quality (was 70)
-                                settings.quality >= 15 -> 30  // Acceptable quality (was 60)
-                                settings.quality >= 10 -> 20  // Fast mode (was 50)
-                                else -> 10  // Ultra fast mode (was 40)
-                            },
-                            fps = actualFps,
-                            onProgress = { p ->
-                                Log.d("Recorder", "WebP encoding progress: $p%")
-                                _state.value = _state.value.copy(saveProgress = p)
-                            }
-                        )
+                        // Use JAVE2 on macOS to avoid signature issues
+                        val osName = System.getProperty("os.name").lowercase()
+                        val webpQuality = when {
+                            settings.quality >= 45 -> 75
+                            settings.quality >= 35 -> 60
+                            settings.quality >= 25 -> 45
+                            settings.quality >= 15 -> 30
+                            settings.quality >= 10 -> 20
+                            else -> 10
+                        }
+
+                        val result = if ((osName.contains("mac") || osName.contains("darwin")) && JAVEEncoder.isAvailable()) {
+                            Log.d("Recorder", "Using JAVE2 encoder for macOS WebP (no signature issues)")
+                            JAVEEncoder.encodeWebPFromFiles(
+                                frameFiles = frameFiles,
+                                outputFile = outputFile,
+                                quality = webpQuality,
+                                fps = actualFps,
+                                onProgress = { p ->
+                                    Log.d("Recorder", "WebP encoding progress: $p%")
+                                    _state.value = _state.value.copy(saveProgress = p)
+                                }
+                            )
+                        } else {
+                            NativeEncoderSimple.encodeWebPFromFiles(
+                                frameFiles = frameFiles,
+                                outputFile = outputFile,
+                                quality = webpQuality,
+                                fps = actualFps,
+                                onProgress = { p ->
+                                    Log.d("Recorder", "WebP encoding progress: $p%")
+                                    _state.value = _state.value.copy(saveProgress = p)
+                                }
+                            )
+                        }
                         cleanupTemp()
                         webpOutputFile = null
                         result
@@ -353,16 +369,32 @@ class Recorder {
 					else -> 25  // Minimum kabul edilebilir kalite
 				}
 
-				val result = NativeEncoderSimple.encodeGIFFromFiles(
-					frameFiles = frameFiles,
-					outputFile = outputFile,
-					fps = actualFps,
-					quality = gifQuality,
-					onProgress = { p ->
-						Log.d("Recorder", "GIF encoding progress: $p%")
-						_state.value = _state.value.copy(saveProgress = p)
-					}
-				)
+				// Use JAVE2 on macOS to avoid signature issues
+				val osName = System.getProperty("os.name").lowercase()
+				val result = if ((osName.contains("mac") || osName.contains("darwin")) && JAVEEncoder.isAvailable()) {
+					Log.d("Recorder", "Using JAVE2 encoder for macOS (no signature issues)")
+					JAVEEncoder.encodeGIFFromFiles(
+						frameFiles = frameFiles,
+						outputFile = outputFile,
+						fps = actualFps,
+						quality = gifQuality,
+						onProgress = { p ->
+							Log.d("Recorder", "GIF encoding progress: $p%")
+							_state.value = _state.value.copy(saveProgress = p)
+						}
+					)
+				} else {
+					NativeEncoderSimple.encodeGIFFromFiles(
+						frameFiles = frameFiles,
+						outputFile = outputFile,
+						fps = actualFps,
+						quality = gifQuality,
+						onProgress = { p ->
+							Log.d("Recorder", "GIF encoding progress: $p%")
+							_state.value = _state.value.copy(saveProgress = p)
+						}
+					)
+				}
 				Log.d("Recorder", "GIF encoding completed, cleaning up temp files...")
 				cleanupTemp()
 				Log.d("Recorder", "Temp files cleaned up, returning result")
