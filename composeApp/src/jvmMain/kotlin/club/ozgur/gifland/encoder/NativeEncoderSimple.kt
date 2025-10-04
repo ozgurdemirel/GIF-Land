@@ -43,6 +43,7 @@ object NativeEncoderSimple {
 
                 // Ensure executable on Unix-like systems
                 if (!isWindows) {
+                    // Set executable permissions
                     runCatching {
                         val makeExecutable = ProcessBuilder("chmod", "+x", tempFile.absolutePath).start()
                         makeExecutable.waitFor()
@@ -51,17 +52,62 @@ object NativeEncoderSimple {
                         tempFile.setExecutable(true, false)
                     }
 
-                    // Remove macOS quarantine attribute to prevent SIGABRT (error 134)
+                    // macOS specific: Remove quarantine and sign locally to prevent SIGABRT (error 134)
                     if (osName.contains("mac") || osName.contains("darwin")) {
+                        Log.d("NativeEncoderSimple", "Preparing FFmpeg for macOS execution...")
+
+                        // Step 1: Remove all extended attributes including quarantine
                         runCatching {
-                            Log.d("NativeEncoderSimple", "Removing quarantine attribute from FFmpeg")
-                            val removeQuarantine = ProcessBuilder("xattr", "-cr", tempFile.absolutePath).start()
-                            removeQuarantine.waitFor(5, TimeUnit.SECONDS)
-                            if (removeQuarantine.exitValue() != 0) {
-                                Log.d("NativeEncoderSimple", "xattr command returned: ${removeQuarantine.exitValue()}")
+                            Log.d("NativeEncoderSimple", "Removing extended attributes from FFmpeg")
+                            val removeAttrs = ProcessBuilder("xattr", "-cr", tempFile.absolutePath).start()
+                            removeAttrs.waitFor(5, TimeUnit.SECONDS)
+                            val exitCode = removeAttrs.exitValue()
+                            if (exitCode != 0) {
+                                // Try alternative: remove specific com.apple.quarantine
+                                val removeQuarantine = ProcessBuilder("xattr", "-d", "com.apple.quarantine", tempFile.absolutePath).start()
+                                removeQuarantine.waitFor(5, TimeUnit.SECONDS)
                             }
                         }.onFailure { e ->
-                            Log.d("NativeEncoderSimple", "Could not remove quarantine (non-critical): ${e.message}")
+                            Log.d("NativeEncoderSimple", "Could not remove attributes: ${e.message}")
+                        }
+
+                        // Step 2: Add local ad-hoc signature (creates new signature valid on THIS machine)
+                        runCatching {
+                            Log.d("NativeEncoderSimple", "Adding local ad-hoc signature to FFmpeg")
+                            // First try simple ad-hoc signature (more compatible)
+                            val signProcess = ProcessBuilder(
+                                "codesign",
+                                "--force",           // Replace any existing signature
+                                "--sign", "-",       // Ad-hoc signature
+                                tempFile.absolutePath
+                            ).start()
+
+                            val signed = signProcess.waitFor(10, TimeUnit.SECONDS)
+                            if (signed && signProcess.exitValue() == 0) {
+                                Log.d("NativeEncoderSimple", "Successfully signed FFmpeg locally")
+                            } else {
+                                // If simple signing failed, try with more options
+                                Log.d("NativeEncoderSimple", "Simple signing failed, trying with deep signing...")
+                                val deepSignProcess = ProcessBuilder(
+                                    "codesign",
+                                    "--force",
+                                    "--deep",            // Sign nested code
+                                    "--sign", "-",
+                                    tempFile.absolutePath
+                                ).start()
+                                deepSignProcess.waitFor(10, TimeUnit.SECONDS)
+                            }
+                        }.onFailure { e ->
+                            Log.d("NativeEncoderSimple", "Could not sign binary (will try to run anyway): ${e.message}")
+                        }
+
+                        // Step 3: Verify the binary is ready
+                        runCatching {
+                            val verifyProcess = ProcessBuilder("codesign", "-v", tempFile.absolutePath).start()
+                            verifyProcess.waitFor(2, TimeUnit.SECONDS)
+                            if (verifyProcess.exitValue() == 0) {
+                                Log.d("NativeEncoderSimple", "FFmpeg signature verified successfully")
+                            }
                         }
                     }
                 }

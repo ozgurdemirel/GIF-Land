@@ -135,10 +135,9 @@ chmod +x composeApp/src/jvmMain/resources/native/macos/ffmpeg
 # Strip debug symbols to reduce size
 strip composeApp/src/jvmMain/resources/native/macos/ffmpeg
 
-# Remove quarantine and add ad-hoc signature
-echo "📝 Signing FFmpeg binary..."
+# Clean any extended attributes from build
 xattr -cr composeApp/src/jvmMain/resources/native/macos/ffmpeg 2>/dev/null || true
-codesign --force --sign - --timestamp composeApp/src/jvmMain/resources/native/macos/ffmpeg 2>/dev/null || true
+echo "ℹ️  Note: FFmpeg will be signed locally at runtime on target machine"
 
 # Check the result
 echo "✅ Static FFmpeg built successfully!"

@@ -45,16 +45,14 @@ if [ -f "$FFMPEG_PATH" ]; then
     FFMPEG_SIZE=$(ls -lh "$FFMPEG_PATH" | awk '{print $5}')
     echo "✅ FFmpeg bundled: $FFMPEG_SIZE"
 
-    # Remove quarantine attribute (macOS Gatekeeper)
+    # Make executable and clean
+    chmod +x "$FFMPEG_PATH"
     xattr -cr "$FFMPEG_PATH" 2>/dev/null || true
 
     # Check architecture
     echo "🏗️ FFmpeg architecture:"
     file "$FFMPEG_PATH"
     lipo -info "$FFMPEG_PATH" 2>/dev/null || true
-
-    # Make executable
-    chmod +x "$FFMPEG_PATH"
 else
     echo "⚠️  FFmpeg not found in resources"
 fi
