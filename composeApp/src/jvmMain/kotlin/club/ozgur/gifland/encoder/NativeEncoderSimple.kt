@@ -56,49 +56,44 @@ object NativeEncoderSimple {
                     if (osName.contains("mac") || osName.contains("darwin")) {
                         Log.d("NativeEncoderSimple", "Preparing FFmpeg for macOS execution...")
 
-                        // Step 1: Remove all extended attributes including quarantine
+                        // Step 1: Remove quarantine attribute (for macOS 10.15+)
                         runCatching {
-                            Log.d("NativeEncoderSimple", "Removing extended attributes from FFmpeg")
-                            val removeAttrs = ProcessBuilder("xattr", "-cr", tempFile.absolutePath).start()
-                            removeAttrs.waitFor(5, TimeUnit.SECONDS)
-                            val exitCode = removeAttrs.exitValue()
-                            if (exitCode != 0) {
-                                // Try alternative: remove specific com.apple.quarantine
-                                val removeQuarantine = ProcessBuilder("xattr", "-d", "com.apple.quarantine", tempFile.absolutePath).start()
-                                removeQuarantine.waitFor(5, TimeUnit.SECONDS)
+                            Log.d("NativeEncoderSimple", "Removing quarantine from FFmpeg")
+                            // Use -dr to recursively remove com.apple.quarantine
+                            val removeQuarantine = ProcessBuilder(
+                                "xattr", "-dr", "com.apple.quarantine", tempFile.absolutePath
+                            ).start()
+                            removeQuarantine.waitFor(5, TimeUnit.SECONDS)
+
+                            if (removeQuarantine.exitValue() != 0) {
+                                // Fallback: try -cr to clear all attributes
+                                Log.d("NativeEncoderSimple", "First attempt failed, trying to clear all attributes")
+                                val clearAttrs = ProcessBuilder(
+                                    "xattr", "-cr", tempFile.absolutePath
+                                ).start()
+                                clearAttrs.waitFor(5, TimeUnit.SECONDS)
                             }
                         }.onFailure { e ->
-                            Log.d("NativeEncoderSimple", "Could not remove attributes: ${e.message}")
+                            Log.d("NativeEncoderSimple", "Could not remove quarantine: ${e.message}")
                         }
 
-                        // Step 2: Add local ad-hoc signature (creates new signature valid on THIS machine)
+                        // Step 2: Sign the binary for Apple Silicon (ad-hoc signature)
                         runCatching {
-                            Log.d("NativeEncoderSimple", "Adding local ad-hoc signature to FFmpeg")
-                            // First try simple ad-hoc signature (more compatible)
+                            Log.d("NativeEncoderSimple", "Signing FFmpeg with ad-hoc signature")
                             val signProcess = ProcessBuilder(
-                                "codesign",
-                                "--force",           // Replace any existing signature
-                                "--sign", "-",       // Ad-hoc signature
-                                tempFile.absolutePath
+                                "codesign", "-s", "-", tempFile.absolutePath
                             ).start()
 
-                            val signed = signProcess.waitFor(10, TimeUnit.SECONDS)
-                            if (signed && signProcess.exitValue() == 0) {
-                                Log.d("NativeEncoderSimple", "Successfully signed FFmpeg locally")
+                            signProcess.waitFor(10, TimeUnit.SECONDS)
+                            if (signProcess.exitValue() == 0) {
+                                Log.d("NativeEncoderSimple", "Successfully signed FFmpeg")
                             } else {
-                                // If simple signing failed, try with more options
-                                Log.d("NativeEncoderSimple", "Simple signing failed, trying with deep signing...")
-                                val deepSignProcess = ProcessBuilder(
-                                    "codesign",
-                                    "--force",
-                                    "--deep",            // Sign nested code
-                                    "--sign", "-",
-                                    tempFile.absolutePath
-                                ).start()
-                                deepSignProcess.waitFor(10, TimeUnit.SECONDS)
+                                // If failed, read error output
+                                val errorOutput = signProcess.errorStream.bufferedReader().readText()
+                                Log.d("NativeEncoderSimple", "Codesign failed: $errorOutput")
                             }
                         }.onFailure { e ->
-                            Log.d("NativeEncoderSimple", "Could not sign binary (will try to run anyway): ${e.message}")
+                            Log.d("NativeEncoderSimple", "Could not sign binary: ${e.message}")
                         }
 
                         // Step 3: Verify the binary is ready
@@ -106,7 +101,7 @@ object NativeEncoderSimple {
                             val verifyProcess = ProcessBuilder("codesign", "-v", tempFile.absolutePath).start()
                             verifyProcess.waitFor(2, TimeUnit.SECONDS)
                             if (verifyProcess.exitValue() == 0) {
-                                Log.d("NativeEncoderSimple", "FFmpeg signature verified successfully")
+                                Log.d("NativeEncoderSimple", "FFmpeg signature verified")
                             }
                         }
                     }
@@ -327,8 +322,20 @@ object NativeEncoderSimple {
                     onProgress?.invoke(100)
                     Result.success(outputFile)
                 } else {
-                    Log.e("NativeEncoderSimple", "FFmpeg failed with output: $output")
-                    Result.failure(Exception("FFmpeg encoding failed: ${output.take(200)}"))
+                    val exitCode = process.exitValue()
+                    Log.e("NativeEncoderSimple", "FFmpeg failed with exit code $exitCode, output: $output")
+
+                    // Special handling for macOS code signing error
+                    if (exitCode == 134 && (System.getProperty("os.name").lowercase().contains("mac"))) {
+                        val errorMsg = "FFmpeg exited with error code: 134 (macOS security issue)\n\n" +
+                                "To fix this, please install FFmpeg via Homebrew:\n" +
+                                "1. Open Terminal\n" +
+                                "2. Run: brew install ffmpeg\n" +
+                                "3. Restart the application"
+                        Result.failure(Exception(errorMsg))
+                    } else {
+                        Result.failure(Exception("FFmpeg encoding failed with exit code $exitCode: ${output.take(200)}"))
+                    }
                 }
             } finally {
                 tempDir.deleteRecursively()
@@ -456,6 +463,18 @@ object NativeEncoderSimple {
                 Result.success(outputFile)
             } else {
                 val exitCode = if (success) process.exitValue() else -1
+
+                // Special handling for macOS code signing error
+                if (exitCode == 134 && (System.getProperty("os.name").lowercase().contains("mac"))) {
+                    val errorMsg = "FFmpeg exited with error code: 134 (macOS security issue)\n\n" +
+                            "To fix this, please install FFmpeg via Homebrew:\n" +
+                            "1. Open Terminal\n" +
+                            "2. Run: brew install ffmpeg\n" +
+                            "3. Restart the application"
+                    Log.e("NativeEncoderSimple", errorMsg)
+                    return Result.failure(Exception(errorMsg))
+                }
+
                 val errorMsg = when {
                     !success -> "FFmpeg process timed out after 540 seconds"
                     exitCode != 0 -> "FFmpeg exited with error code: $exitCode"
