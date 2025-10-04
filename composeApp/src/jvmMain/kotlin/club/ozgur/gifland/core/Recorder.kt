@@ -496,13 +496,15 @@ class Recorder {
     }
 
     fun reset() {
-        Log.d("Recorder", "Reset called - clearing all state")
+        Log.d("Recorder", "Reset called - clearing recording state (preserving lastSavedFile)")
         _state.value = RecordingState()
         frames.clear()
         frameFiles.clear()
         frameTimestampsUs.clear()
         cumulativeBytes = 0
         droppedFrames = 0
+        // NOTE: _lastSavedFile is intentionally NOT reset here
+        // This preserves the "Open Folder" button functionality after recording
     }
 }
 

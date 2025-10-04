@@ -62,6 +62,11 @@ object MainScreen : Screen {
         }
         val lastSavedFile by recorder.lastSavedFile.collectAsState()
 
+        // Debug logging for lastSavedFile state
+        LaunchedEffect(lastSavedFile) {
+            Log.d("MainScreen", "lastSavedFile changed to: ${lastSavedFile?.absolutePath ?: "null"}")
+        }
+
 
         // Kayıt başladığında RecordingScreen'e geç
         LaunchedEffect(recordingState.isRecording) {
@@ -240,8 +245,12 @@ object MainScreen : Screen {
                                             )
                                             // lastSavedFile varsa her zaman göster
                                             if (lastSavedFile != null) {
+                                                Log.d("MainScreen", "Showing Open Folder button for: ${lastSavedFile!!.absolutePath}")
                                                 Button(
-                                                    onClick = { openFileLocation(lastSavedFile!!) },
+                                                    onClick = {
+                                                        Log.d("MainScreen", "Open Folder clicked for: ${lastSavedFile!!.absolutePath}")
+                                                        openFileLocation(lastSavedFile!!)
+                                                    },
                                                     colors = ButtonDefaults.buttonColors(
                                                         containerColor = Color(0xFF4CAF50)
                                                     ),
@@ -422,6 +431,10 @@ object MainScreen : Screen {
                         if (!recordingState.isRecording) {
                             Button(
                                 onClick = {
+                                    // Reset state before starting new recording to clean up old data
+                                    // But preserve lastSavedFile which is handled separately
+                                    recorder.reset()
+
                                     recorder.startRecording(
                                         area = selectedArea,
                                         onUpdate = { state ->
@@ -431,11 +444,12 @@ object MainScreen : Screen {
                                             // Bu callback max duration dolunca veya hata olunca çağrılıyor
                                             result.onSuccess { file ->
                                                 message = "Saved: ${file.name}"
-                                                recorder.reset()
+                                                // Don't reset here - preserve lastSavedFile
+                                                Log.d("MainScreen", "Max duration reached, file saved: ${file.name}")
                                             }.onFailure { error ->
                                                 Log.e("MainScreen", "Recording failed", error)
                                                 message = "Error!"
-                                                recorder.reset()
+                                                // Don't reset on error - preserve state for debugging
                                             }
                                         }
                                     )
@@ -487,12 +501,14 @@ object MainScreen : Screen {
                                         recorder.stopRecording()
                                             .onSuccess { file ->
                                                 message = "Saved: ${file.name}"
-                                                recorder.reset()
+                                                // Don't reset immediately - preserve lastSavedFile
+                                                // Reset will be called when starting a new recording
+                                                Log.d("MainScreen", "Recording saved, preserving state for Open Folder button")
                                             }
                                             .onFailure { error ->
                                                 message = "Error: ${error.message}"
-                                                recorder.reset()
                                                 Log.e("MainScreen", "Stop button: Save failed", error)
+                                                // Don't reset on error - preserve state for debugging
                                             }
                                     }
                                 },

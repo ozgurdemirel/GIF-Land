@@ -267,12 +267,12 @@ object RecordingScreen : Screen {
                             GlobalScope.launch {
                                 val result = recorder.stopRecording()
                                 result.onSuccess { file ->
-                                    // Reset AFTER successful save
-                                    recorder.reset()
+                                    // Don't reset here - let MainScreen handle it
+                                    // This ensures lastSavedFile is preserved
+                                    Log.d("RecordingScreen", "Recording saved successfully: ${file.absolutePath}")
                                 }.onFailure { error ->
                                     Log.e("RecordingScreen", "Save failed", error)
-                                    // Reset even on failure to clear state
-                                    recorder.reset()
+                                    // Don't reset on failure either - preserve state for debugging
                                 }
                             }
                         },
