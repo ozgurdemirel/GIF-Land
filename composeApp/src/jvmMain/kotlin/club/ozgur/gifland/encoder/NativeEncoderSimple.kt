@@ -50,6 +50,20 @@ object NativeEncoderSimple {
                     if (!tempFile.canExecute()) {
                         tempFile.setExecutable(true, false)
                     }
+
+                    // Remove macOS quarantine attribute to prevent SIGABRT (error 134)
+                    if (osName.contains("mac") || osName.contains("darwin")) {
+                        runCatching {
+                            Log.d("NativeEncoderSimple", "Removing quarantine attribute from FFmpeg")
+                            val removeQuarantine = ProcessBuilder("xattr", "-cr", tempFile.absolutePath).start()
+                            removeQuarantine.waitFor(5, TimeUnit.SECONDS)
+                            if (removeQuarantine.exitValue() != 0) {
+                                Log.d("NativeEncoderSimple", "xattr command returned: ${removeQuarantine.exitValue()}")
+                            }
+                        }.onFailure { e ->
+                            Log.d("NativeEncoderSimple", "Could not remove quarantine (non-critical): ${e.message}")
+                        }
+                    }
                 }
 
                 bundledFfmpegPath = tempFile
