@@ -13,8 +13,23 @@ import javax.imageio.ImageIO
 object NativeEncoderSimple {
 
     private var bundledFfmpegPath: File? = null
+    private var customFFmpegPath: String? = null
+
+    fun setFFmpegPath(path: String) {
+        customFFmpegPath = path
+        Log.d("NativeEncoderSimple", "Custom FFmpeg path set: $path")
+    }
 
     private fun getBundledFfmpeg(): File? {
+        // First check if we have a custom FFmpeg path set (e.g., from JAVE2)
+        if (!customFFmpegPath.isNullOrEmpty()) {
+            val customFile = File(customFFmpegPath!!)
+            if (customFile.exists()) {
+                Log.d("NativeEncoderSimple", "Using custom FFmpeg: $customFFmpegPath")
+                return customFile
+            }
+        }
+
         if (bundledFfmpegPath?.exists() == true) {
             return bundledFfmpegPath
         }

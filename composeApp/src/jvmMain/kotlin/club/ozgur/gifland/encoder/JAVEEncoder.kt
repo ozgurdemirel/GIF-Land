@@ -8,7 +8,7 @@ import ws.schild.jave.encode.EncodingAttributes
 import ws.schild.jave.encode.VideoAttributes
 import ws.schild.jave.encode.enums.X264_PROFILE
 import ws.schild.jave.info.VideoSize
-import ws.schild.jave.process.ffmpeg.FFMPEGLocator
+import ws.schild.jave.process.ffmpeg.DefaultFFMPEGLocator
 import ws.schild.jave.progress.EncoderProgressListener
 import java.io.File
 import javax.imageio.ImageIO
@@ -21,7 +21,7 @@ object JAVEEncoder {
     init {
         try {
             // Get the FFmpeg path from JAVE
-            val locator = FFMPEGLocator()
+            val locator = DefaultFFMPEGLocator()
             val ffmpegPath = locator.getExecutablePath()
             Log.d("JAVEEncoder", "JAVE2 FFmpeg path: $ffmpegPath")
             FFmpegDebugManager.updateFFmpegVersion("Using JAVE2 FFmpeg: $ffmpegPath")
@@ -55,24 +55,39 @@ object JAVEEncoder {
             tempVideo.deleteOnExit()
 
             // First encode frames to temporary MP4
+            // JAVE2 needs actual files to exist - let's verify they do
             val frameDir = frameFiles.first().parentFile
-            val inputPattern = File(frameDir, "frame_%06d.jpg")
+            Log.d("JAVEEncoder", "Frame directory: ${frameDir.absolutePath}")
+            Log.d("JAVEEncoder", "Frame files exist: ${frameFiles.all { it.exists() }}")
+            Log.d("JAVEEncoder", "First frame: ${frameFiles.first().name}")
+
+            // For JAVE2, we need to use the actual frame pattern
+            val firstFrameName = frameFiles.first().name
+            val inputPattern = if (firstFrameName.matches(Regex("frame_\\d{6}\\.jpg"))) {
+                File(frameDir, "frame_%06d.jpg")
+            } else {
+                // Fallback to using first file directly
+                frameFiles.first()
+            }
+
+            Log.d("JAVEEncoder", "Input pattern: ${inputPattern.absolutePath}")
 
             val encoder = Encoder()
             val multimediaObject = MultimediaObject(inputPattern)
 
-            val videoAttrs = VideoAttributes().apply {
-                codec = "libx264"
-                bitRate = 5000000 // 5 Mbps
-                frameRate = fps
-                setSize(VideoSize(width, height))
-                x264Profile = X264_PROFILE.BASELINE
-            }
+            val videoAttrs = VideoAttributes()
+            videoAttrs.setCodec("libx264")
+            videoAttrs.setBitRate(5000000) // 5 Mbps
+            videoAttrs.setFrameRate(fps)
+            videoAttrs.setSize(VideoSize(width, height))
+            videoAttrs.setX264Profile(X264_PROFILE.BASELINE)
 
             val encodingAttrs = EncodingAttributes().apply {
                 setInputFormat("image2")
                 setOutputFormat("mp4")
                 setVideoAttributes(videoAttrs)
+                // Explicitly set frame rate for image sequences
+                setDecodingThreads(1)
             }
 
             // Progress listener
@@ -92,12 +107,11 @@ object JAVEEncoder {
             val webpEncoder = Encoder()
             val mp4Object = MultimediaObject(tempVideo)
 
-            val webpVideoAttrs = VideoAttributes().apply {
-                codec = "libwebp"
-                bitRate = (quality * 50000).coerceIn(100000, 5000000) // Quality to bitrate
-                frameRate = fps
-                setSize(VideoSize(width, height))
-            }
+            val webpVideoAttrs = VideoAttributes()
+            webpVideoAttrs.setCodec("libwebp")
+            webpVideoAttrs.setBitRate((quality * 50000).coerceIn(100000, 5000000)) // Quality to bitrate
+            webpVideoAttrs.setFrameRate(fps)
+            webpVideoAttrs.setSize(VideoSize(width, height))
 
             val webpEncodingAttrs = EncodingAttributes().apply {
                 setOutputFormat("webp")
@@ -155,20 +169,39 @@ object JAVEEncoder {
                 height = (height * scale).toInt()
             }
 
+            // JAVE2 needs actual files to exist - let's verify they do
             val frameDir = frameFiles.first().parentFile
-            val inputPattern = File(frameDir, "frame_%06d.jpg")
+            Log.d("JAVEEncoder", "Frame directory: ${frameDir.absolutePath}")
+            Log.d("JAVEEncoder", "Frame files exist: ${frameFiles.all { it.exists() }}")
+            Log.d("JAVEEncoder", "First frame: ${frameFiles.first().name}")
+
+            // For JAVE2, we need to use the actual frame pattern
+            val firstFrameName = frameFiles.first().name
+            val inputPattern = if (firstFrameName.matches(Regex("frame_\\d{6}\\.jpg"))) {
+                File(frameDir, "frame_%06d.jpg")
+            } else {
+                // Fallback to using first file directly
+                frameFiles.first()
+            }
+
+            Log.d("JAVEEncoder", "Input pattern: ${inputPattern.absolutePath}")
 
             val encoder = Encoder()
             val multimediaObject = MultimediaObject(inputPattern)
 
-            val videoAttrs = VideoAttributes().apply {
-                codec = "gif"
-                frameRate = fps
-                setSize(VideoSize(width, height))
-            }
+            val videoAttrs = VideoAttributes()
+            videoAttrs.setCodec("gif")
+            videoAttrs.setFrameRate(fps)
+            videoAttrs.setSize(VideoSize(width, height))
 
             val encodingAttrs = EncodingAttributes().apply {
-                setInputFormat("image2")
+                // Check if using pattern or single file
+                if (inputPattern.name.contains("%")) {
+                    setInputFormat("image2")
+                } else {
+                    // For single file, we need to handle differently
+                    Log.d("JAVEEncoder", "Warning: Using single file input, may not work correctly")
+                }
                 setOutputFormat("gif")
                 setVideoAttributes(videoAttrs)
             }
@@ -205,12 +238,25 @@ object JAVEEncoder {
      */
     fun isAvailable(): Boolean {
         return try {
-            val locator = FFMPEGLocator()
+            val locator = DefaultFFMPEGLocator()
             val path = locator.getExecutablePath()
             path.isNotEmpty()
         } catch (e: Exception) {
             Log.e("JAVEEncoder", "JAVE2 not available", e)
             false
+        }
+    }
+
+    /**
+     * Get the FFmpeg executable path from JAVE2
+     */
+    fun getFFmpegPath(): String? {
+        return try {
+            val locator = DefaultFFMPEGLocator()
+            locator.getExecutablePath()
+        } catch (e: Exception) {
+            Log.e("JAVEEncoder", "Failed to get FFmpeg path from JAVE2", e)
+            null
         }
     }
 }

@@ -325,8 +325,13 @@ class Recorder {
                         }
 
                         val result = if ((osName.contains("mac") || osName.contains("darwin")) && JAVEEncoder.isAvailable()) {
-                            Log.d("Recorder", "Using JAVE2 encoder for macOS WebP (no signature issues)")
-                            JAVEEncoder.encodeWebPFromFiles(
+                            // Use JAVE2's signed FFmpeg binary with our encoder
+                            val javeFFmpegPath = JAVEEncoder.getFFmpegPath()
+                            if (javeFFmpegPath != null) {
+                                Log.d("Recorder", "Using JAVE2's signed FFmpeg binary for WebP: $javeFFmpegPath")
+                                NativeEncoderSimple.setFFmpegPath(javeFFmpegPath)
+                            }
+                            NativeEncoderSimple.encodeWebPFromFiles(
                                 frameFiles = frameFiles,
                                 outputFile = outputFile,
                                 quality = webpQuality,
@@ -372,8 +377,13 @@ class Recorder {
 				// Use JAVE2 on macOS to avoid signature issues
 				val osName = System.getProperty("os.name").lowercase()
 				val result = if ((osName.contains("mac") || osName.contains("darwin")) && JAVEEncoder.isAvailable()) {
-					Log.d("Recorder", "Using JAVE2 encoder for macOS (no signature issues)")
-					JAVEEncoder.encodeGIFFromFiles(
+					// Use JAVE2's signed FFmpeg binary with our encoder
+					val javeFFmpegPath = JAVEEncoder.getFFmpegPath()
+					if (javeFFmpegPath != null) {
+						Log.d("Recorder", "Using JAVE2's signed FFmpeg binary: $javeFFmpegPath")
+						NativeEncoderSimple.setFFmpegPath(javeFFmpegPath)
+					}
+					NativeEncoderSimple.encodeGIFFromFiles(
 						frameFiles = frameFiles,
 						outputFile = outputFile,
 						fps = actualFps,
@@ -444,6 +454,16 @@ class Recorder {
                             settings.fps
                         }
                         Log.d("Recorder", "MP4 encoding: frames=${frameFiles.size}, duration=${actualDurationMs}ms, actualFps=$actualFps (target was ${settings.fps})")
+
+                        // Use JAVE2's signed FFmpeg binary on macOS if available
+                        val osName = System.getProperty("os.name").lowercase()
+                        if ((osName.contains("mac") || osName.contains("darwin")) && JAVEEncoder.isAvailable()) {
+                            val javeFFmpegPath = JAVEEncoder.getFFmpegPath()
+                            if (javeFFmpegPath != null) {
+                                Log.d("Recorder", "Using JAVE2's signed FFmpeg binary for MP4: $javeFFmpegPath")
+                                NativeEncoderSimple.setFFmpegPath(javeFFmpegPath)
+                            }
+                        }
 
                         // Use file-based encoding to avoid memory issues
                         val result = NativeEncoderSimple.encodeMP4FromFiles(
