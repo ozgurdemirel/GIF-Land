@@ -278,28 +278,7 @@ object NativeEncoderSimple {
     }
 
     fun findFfmpeg(): String {
-        val osName = System.getProperty("os.name").lowercase()
-        val isWindows = osName.contains("win")
 
-        // First, try to find system FFmpeg (more reliable)
-        val systemPaths = if (isWindows) listOf(
-            System.getenv("ProgramFiles") + "\\ffmpeg\\bin\\ffmpeg.exe",
-            System.getenv("ProgramFiles(x86)") + "\\ffmpeg\\bin\\ffmpeg.exe",
-            "C:\\ffmpeg\\bin\\ffmpeg.exe"
-        ) else listOf(
-            "/usr/local/bin/ffmpeg",
-            "/opt/homebrew/bin/ffmpeg",
-            "/usr/bin/ffmpeg",
-            "/opt/local/bin/ffmpeg"  // MacPorts
-        )
-
-        for (path in systemPaths) {
-            if (path != null && File(path).exists()) {
-                Log.d("NativeEncoderSimple", "Using system FFmpeg at: $path")
-                FFmpegDebugManager.updateFFmpegVersion("Using system FFmpeg: $path")
-                return path
-            }
-        }
 
         // If no system FFmpeg, try bundled one
         getBundledFfmpeg()?.let {
@@ -310,7 +289,7 @@ object NativeEncoderSimple {
         }
 
         // Last resort: try to find ffmpeg in PATH
-        return if (isWindows) "ffmpeg.exe" else "ffmpeg"
+       throw RuntimeException("no way to not have bundle ffmpeg")
     }
 
     fun isAvailable(): Boolean {

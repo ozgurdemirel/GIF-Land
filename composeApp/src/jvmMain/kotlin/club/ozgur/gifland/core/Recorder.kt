@@ -3,7 +3,6 @@ package club.ozgur.gifland.core
 import club.ozgur.gifland.capture.ScreenCapture
 import club.ozgur.gifland.encoder.NativeEncoderSimple
 import club.ozgur.gifland.encoder.JAVEEncoder
-import club.ozgur.gifland.encoder.NativeRecorderClient
 import club.ozgur.gifland.ui.components.CaptureArea
 import club.ozgur.gifland.util.debugId
 import club.ozgur.gifland.util.Log
