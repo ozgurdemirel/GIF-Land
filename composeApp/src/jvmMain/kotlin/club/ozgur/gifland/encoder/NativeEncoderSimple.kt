@@ -277,7 +277,7 @@ object NativeEncoderSimple {
         }
     }
 
-    private fun findFfmpeg(): String {
+    fun findFfmpeg(): String {
         val osName = System.getProperty("os.name").lowercase()
         val isWindows = osName.contains("win")
 
