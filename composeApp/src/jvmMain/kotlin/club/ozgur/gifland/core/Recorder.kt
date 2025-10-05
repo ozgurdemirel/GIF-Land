@@ -503,15 +503,6 @@ class Recorder {
         return saveResult
     }
 
-    private fun calculateEstimatedSize(): Long {
-		if (frames.isEmpty()) return 0
-		return cumulativeBytes.takeIf { it > 0 } ?: run {
-			val sample = frames.first()
-			val avgFrameSize = sample.width * sample.height * 3L / 10
-			avgFrameSize * frames.size
-		}
-    }
-
 	private fun saveJpeg(image: BufferedImage, file: File, quality: Float) {
 		javax.imageio.ImageIO.getImageWritersByFormatName("jpeg").asSequence().firstOrNull()?.let { writer ->
 			file.outputStream().use { os ->
