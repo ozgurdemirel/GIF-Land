@@ -40,14 +40,14 @@ Choose the version for your operating system:
 
 | Platform | Download | Requirements |
 |----------|----------|--------------|
-| **Mac (Apple Silicon)** | [Download DMG](https://github.com/ozgurdemirel/GIF-Land/releases/latest/download/GIF-Land-macOS-arm64.dmg) | M1/M2/M3/M4 Macs |
-| **Mac (Intel)** | [Download DMG](https://github.com/ozgurdemirel/GIF-Land/releases/latest/download/GIF-Land-macOS-x64.dmg) | Intel-based Macs |
+| **Mac (Apple Silicon)** | [Download DMG](https://github.com/ozgurdemirel/GIF-Land/releases/latest/) | M1/M2/M3/M4 Macs |
+| **Mac (Intel)** | [Download DMG](https://github.com/ozgurdemirel/GIF-Land/releases/latest/) | Intel-based Macs |
 
 ### 🪟 Windows
 
 | Platform | Download | Requirements |
 |----------|----------|--------------|
-| **Windows** | [Download MSI](https://github.com/ozgurdemirel/GIF-Land/releases/latest/download/GIF-Land-windows.msi) | Windows 10/11 (64-bit) |
+| **Windows** | [Download MSI](https://github.com/ozgurdemirel/GIF-Land/releases/latest/) | Windows 10/11 (64-bit) |
 
 ## 🚀 Quick Start Guide
 
