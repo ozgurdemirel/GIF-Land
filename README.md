@@ -1,11 +1,19 @@
 # GIF Land - Screen Recorder
 
+> 🚧 **BETA VERSION** - This application is currently in beta. While core features are stable, you may encounter occasional bugs. Please report any issues on [GitHub](https://github.com/ozgurdemirel/GIF-Land/issues).
+
 <div align="center">
   <img src="docs/app-icon.svg" alt="GIF Land Logo" width="200"/>
 
   [![GitHub Release](https://img.shields.io/github/v/release/ozgurdemirel/GIF-Land)](https://github.com/ozgurdemirel/GIF-Land/releases)
   [![License](https://img.shields.io/github/license/ozgurdemirel/GIF-Land)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](https://github.com/ozgurdemirel/GIF-Land)
+
+  <br/>
+
+  <a href="https://buymeacoffee.com/ozgurdemirel">
+    <img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=☕&slug=ozgurdemirel&button_colour=5F7FFF&font_colour=ffffff&font_family=Cookie&outline_colour=000000&coffee_colour=FFDD00" alt="Buy Me A Coffee" />
+  </a>
 </div>
 
 <div align="center">
@@ -164,6 +172,7 @@ If you find GIF Land useful, please consider:
 - ⭐ Starring the project on [GitHub](https://github.com/ozgurdemirel/GIF-Land)
 - 🐛 Reporting bugs and suggesting features
 - 🤝 Contributing to the codebase
+- ☕ [Buy me a coffee](https://buymeacoffee.com/ozgurdemirel) to support development
 
 ## AI Usage Transparency
 
