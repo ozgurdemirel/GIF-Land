@@ -1,4 +1,4 @@
-# GIF Land - Screen Recorder
+# GIF Land - Screen (to GIF / WebP / MP4) Recorder
 
 > 🚧 **BETA VERSION** - This application is currently in beta. While core features are stable, you may encounter occasional bugs. Please report any issues on [GitHub](https://github.com/ozgurdemirel/GIF-Land/issues).
 
