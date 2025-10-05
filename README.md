@@ -113,15 +113,6 @@ Customize your recording:
 - **GIF** for maximum compatibility
 - Consider reducing scale for faster loading
 
-## ⚡ Keyboard Shortcuts
-
-| Action | macOS | Windows |
-|--------|-------|---------|
-| Start/Stop Recording | `⌘ + R` | `Ctrl + R` |
-| Pause/Resume | `⌘ + P` | `Ctrl + P` |
-| Cancel Recording | `Esc` | `Esc` |
-| Area Selection | `⌘ + A` | `Ctrl + A` |
-
 ## 🔧 Troubleshooting
 
 ### macOS Issues
