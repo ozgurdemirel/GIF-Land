@@ -78,7 +78,6 @@ Choose how you want to capture your screen:
 
 - **🖥️ Full Screen** - Records your entire display
 - **📐 Area Selection** - Draw a rectangle to define recording area
-- **🪟 Window Capture** - Select a specific application window
 
 ### 2️⃣ Configure Settings
 
@@ -178,14 +177,12 @@ If you find GIF Land useful, please consider:
 
 **AI-Assisted**:
 - Project structure and boilerplate
-- Resilience4j configuration patterns
 - Documentation formatting
 - Edge case test generation
 
 **Human Expertise**:
-- Core algorithm design (round-robin, adaptive retry)
+- Core algorithm design
 - Performance optimization and profiling
-- Lazy stream synchronization debugging
 - Production readiness assessment
 
 ---
