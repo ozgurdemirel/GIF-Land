@@ -31,7 +31,12 @@ class ScreenCapture {
         return runCatching {
             Log.d("ScreenCapture", "takeScreenshotFFmpeg(area=${area != null}) request")
 
-            val ffmpegPath = NativeEncoderSimple.findFfmpeg()
+            val os = System.getProperty("os.name").lowercase()
+            val ffmpegPath = if ((os.contains("mac") || os.contains("darwin")) && club.ozgur.gifland.encoder.JAVEEncoder.isAvailable()) {
+                club.ozgur.gifland.encoder.JAVEEncoder.getFFmpegPath() ?: NativeEncoderSimple.findFfmpeg()
+            } else {
+                NativeEncoderSimple.findFfmpeg()
+            }
             val outputFile = File(
                 System.getProperty("user.home") + "/Documents",
                 "screen_${System.currentTimeMillis()}.png"
@@ -44,7 +49,6 @@ class ScreenCapture {
                 bounds.contains(mouseLocation)
             } ?: screens.firstOrNull() ?: return@runCatching null
 
-            val os = System.getProperty("os.name").lowercase()
             val command = mutableListOf<String>()
             command += ffmpegPath
 

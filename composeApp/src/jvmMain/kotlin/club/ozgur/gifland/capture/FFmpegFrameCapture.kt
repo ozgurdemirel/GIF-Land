@@ -17,7 +17,8 @@ object FFmpegFrameCapture {
     data class FFmpegCaptureSession(
         val process: Process,
         val outDir: File,
-        val outputPattern: String
+        val outputPattern: String,
+        val logFile: File
     )
 
     /**
@@ -27,9 +28,30 @@ object FFmpegFrameCapture {
      */
     fun start(area: CaptureArea?, fps: Int, scale: Float, qscale: Int, outDir: File): FFmpegCaptureSession {
         val os = System.getProperty("os.name").lowercase()
-        val ffmpeg = NativeEncoderSimple.findFfmpeg()
+        // Prefer JAVE2's signed FFmpeg on macOS to avoid TCC/security issues
+        val ffmpeg = if ((os.contains("mac") || os.contains("darwin")) && club.ozgur.gifland.encoder.JAVEEncoder.isAvailable()) {
+            club.ozgur.gifland.encoder.JAVEEncoder.getFFmpegPath()?.also {
+                Log.d("FFmpegFrameCapture", "Using JAVE2 signed FFmpeg for capture: $it")
+                // Also set globally so other components use the same path
+                club.ozgur.gifland.encoder.NativeEncoderSimple.setFFmpegPath(it)
+            } ?: NativeEncoderSimple.findFfmpeg()
+        } else {
+            NativeEncoderSimple.findFfmpeg()
+        }
         outDir.mkdirs()
         val outputPattern = File(outDir, "ffcap_%06d.jpg").absolutePath
+        val logFile = File(outDir, "ffmpeg_capture.log")
+
+        // macOS: Log available AVFoundation devices to aid debugging (permissions/indexing)
+        if (os.contains("mac") || os.contains("darwin")) {
+            runCatching {
+                val listProc = ProcessBuilder(ffmpeg, "-f", "avfoundation", "-list_devices", "true", "-i", "").redirectErrorStream(true).start()
+                listProc.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+                val devicesOut = listProc.inputStream.bufferedReader().use { it.readText() }
+                Log.d("FFmpegFrameCapture", "AVFoundation devices:\n$devicesOut")
+                runCatching { logFile.appendText("=== AVFoundation devices ===\n$devicesOut\n") }
+            }.onFailure { e -> Log.d("FFmpegFrameCapture", "Could not list avfoundation devices: ${e.message}") }
+        }
 
         // Determine target screen. Prefer the screen containing the selection's center when area != null.
         val screens = GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices
@@ -128,13 +150,18 @@ object FFmpegFrameCapture {
         // Drain ffmpeg output to avoid blocking and aid diagnostics
         kotlin.concurrent.thread(start = true, isDaemon = true, name = "ffmpeg-capture-logger") {
             runCatching {
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { Log.d("FFmpegFrameCapture", it) }
+                logFile.printWriter().use { pw ->
+                    process.inputStream.bufferedReader().useLines { lines ->
+                        lines.forEach {
+                            Log.d("FFmpegFrameCapture", it)
+                            pw.println(it)
+                        }
+                    }
                 }
             }.onFailure { e -> Log.d("FFmpegFrameCapture", "Failed to read ffmpeg output: ${e.message}") }
         }
 
-        return FFmpegCaptureSession(process, outDir, outputPattern)
+        return FFmpegCaptureSession(process, outDir, outputPattern, logFile)
     }
 
     fun stop(session: FFmpegCaptureSession, waitMs: Long = 3000) {

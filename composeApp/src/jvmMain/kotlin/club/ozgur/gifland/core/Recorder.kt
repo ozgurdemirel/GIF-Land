@@ -147,6 +147,30 @@ class Recorder {
         val session = FFmpegFrameCapture.start(area = area, fps = clampedFps, scale = settings.scale, qscale = jpegQscale, outDir = tempDir!!)
         ffmpegSession = session
 
+        // Early diagnostics: surface helpful error if no frames arrive soon after start
+        CoroutineScope(Dispatchers.IO).launch {
+            delay(3000)
+            if (_state.value.isRecording && frameFiles.isEmpty()) {
+                val alive = ffmpegSession?.process?.isAlive ?: false
+                val logSnippet = runCatching {
+                    ffmpegSession?.logFile?.takeIf { it.exists() }?.readText()?.take(1000)
+                }.getOrNull()
+                val baseMsg = if (!alive) {
+                    "Ekran yakalama başlatılamadı (FFmpeg süreci erken sona erdi)."
+                } else {
+                    "Ekran yakalama beklenen sürede kare üretemedi."
+                }
+                val hint = buildString {
+                    append(" Olası nedenler: ")
+                    append("• macOS ekran kaydı izni verilmemiş olabilir (Sistem Ayarları > Gizlilik ve Güvenlik > Ekran Kaydı). ")
+                    append("• Güvenlik/İmza (code signing) veya FFmpeg erişim izinleri. ")
+                    append("• Harici monitör/sıralama farkları.")
+                }
+                _lastError.value = baseMsg + hint + (logSnippet?.let { "\nFFmpeg günlük özeti:\n" + it } ?: "")
+                Log.e("Recorder", "Early no-frames condition. alive=$alive")
+            }
+        }
+
         // Start collector to watch output directory and update state
         collectorJob = CoroutineScope(Dispatchers.IO).launch {
             var lastCount = 0
@@ -221,7 +245,15 @@ class Recorder {
 
         if (frameFiles.isEmpty()) {
             Log.e("Recorder", "No frames captured at stop")
-            _lastError.value = "Kayıt başarısız: Hiç kare yakalanamadı. Erişim izinlerini ve ekran seçimini kontrol edin."
+            val logPath = runCatching { File(tempDir, "ffmpeg_capture.log").takeIf { it.exists() }?.absolutePath }.getOrNull()
+            val guidance = buildString {
+                append("Kayıt başarısız: Hiç kare yakalanamadı. \n")
+                append("• macOS'te Sistem Ayarları > Gizlilik ve Güvenlik > Ekran Kaydı bölümünden GIF Land için izin verin.\n")
+                append("• Eğer istenirse FFmpeg yardımcı aracına da izin vermeniz gerekebilir.\n")
+                append("• Farklı monitör/sıralama ve ölçek (HiDPI) ayarlarını kontrol edin.")
+                if (!logPath.isNullOrBlank()) append("\nFFmpeg günlük dosyası: $logPath")
+            }
+            _lastError.value = guidance
             return Result.failure(Exception("No frames captured"))
         }
 
