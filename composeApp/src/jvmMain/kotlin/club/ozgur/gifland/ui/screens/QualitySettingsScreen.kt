@@ -3,12 +3,18 @@ package club.ozgur.gifland.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.rememberScrollbarAdapter
+
 import androidx.compose.material3.*
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,6 +35,7 @@ data class QualitySettingsScreen(
 
         var fps by remember { mutableStateOf(settings.fps) }
         var quality by remember { mutableStateOf(settings.quality) }
+        var fastGif by remember { mutableStateOf(settings.fastGifPreview) }
 
         Scaffold(
             topBar = {
@@ -47,7 +54,7 @@ data class QualitySettingsScreen(
                             println("========================================")
 
                             // Save settings before navigating back
-                            onSettingsChange(settings.copy(fps = fps, quality = quality))
+                            onSettingsChange(settings.copy(fps = fps, quality = quality, fastGifPreview = fastGif))
                             navigator.pop()
                         }) {
                             Text("←", fontSize = 24.sp)
@@ -58,14 +65,19 @@ data class QualitySettingsScreen(
                         titleContentColor = Color.White,
                         navigationIconContentColor = Color.White
                     )
-                )
-            }
+                    )
+                }
         ) { paddingValues ->
+            val scrollState = rememberScrollState()
+            val showTopIndicator by remember { derivedStateOf { scrollState.value > 0 } }
+            val showBottomIndicator by remember { derivedStateOf { scrollState.value < scrollState.maxValue } }
+
+            Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
@@ -146,7 +158,36 @@ data class QualitySettingsScreen(
                             color = Color(0xFF7B8794)
                         )
                     }
+                    }
+
+                // Fast GIF preview toggle
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Fast GIF preview", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text(
+                                "Lower FPS (8–10) and smaller resolution for quick previews",
+                                fontSize = 12.sp,
+                                color = Color(0xFF7B8794)
+                            )
+                        }
+                        Switch(
+                            checked = fastGif,
+                            onCheckedChange = {
+                                fastGif = it
+                                println("⚡ Fast GIF preview: $it")
+                            }
+                        )
+                    }
                 }
+
 
                 // Quick Presets
                 Card(
@@ -218,7 +259,7 @@ data class QualitySettingsScreen(
                         println("⏱️ Max Duration: ${settings.maxDuration}s")
                         println("========================================")
 
-                        onSettingsChange(settings.copy(fps = fps, quality = quality))
+                        onSettingsChange(settings.copy(fps = fps, quality = quality, fastGifPreview = fastGif))
                         navigator.pop()
                     },
                     modifier = Modifier
@@ -229,6 +270,66 @@ data class QualitySettingsScreen(
                     Text("Save Settings", fontSize = 16.sp)
                 }
             }
+            // Desktop scrollbar for visual scroll indication
+            VerticalScrollbar(
+                adapter = rememberScrollbarAdapter(scrollState),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(
+                        top = paddingValues.calculateTopPadding(),
+                        bottom = paddingValues.calculateBottomPadding(),
+                        end = 2.dp
+                    )
+                    .fillMaxHeight()
+            )
+
+            // Top scroll shadow (only when not at the very top)
+            if (showTopIndicator) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = paddingValues.calculateTopPadding())
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Black.copy(alpha = 0.08f), Color.Transparent)
+                            )
+                        )
+                ) {
+                    Text(
+                        "\u2191",
+                        modifier = Modifier.align(Alignment.Center),
+                        color = Color.Black.copy(alpha = 0.45f),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            // Bottom scroll shadow (only when not at the bottom)
+            if (showBottomIndicator) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = paddingValues.calculateBottomPadding())
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.08f))
+                            )
+                        )
+                ) {
+                    Text(
+                        "\u2193",
+                        modifier = Modifier.align(Alignment.Center),
+                        color = Color.Black.copy(alpha = 0.45f),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
         }
     }
+}
 }

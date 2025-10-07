@@ -1,8 +1,6 @@
 package club.ozgur.gifland.encoder
 
-import club.ozgur.gifland.core.RecorderSettings
 import club.ozgur.gifland.util.Log
-import java.awt.image.BufferedImage
 import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
@@ -278,9 +276,7 @@ object NativeEncoderSimple {
     }
 
     fun findFfmpeg(): String {
-
-
-        // If no system FFmpeg, try bundled one
+        // Try bundled/custom first (custom path is honored inside getBundledFfmpeg)
         getBundledFfmpeg()?.let {
             if (it.exists()) {
                 Log.d("NativeEncoderSimple", "Using bundled FFmpeg at: ${it.absolutePath}")
@@ -288,198 +284,69 @@ object NativeEncoderSimple {
             }
         }
 
-        // Last resort: try to find ffmpeg in PATH
-       throw RuntimeException("no way to not have bundle ffmpeg")
-    }
-
-    fun isAvailable(): Boolean {
+        // Try common system locations
         val osName = System.getProperty("os.name").lowercase()
         val isWindows = osName.contains("win")
-
         val systemPaths = if (isWindows) listOf(
             System.getenv("ProgramFiles") + "\\ffmpeg\\bin\\ffmpeg.exe",
             System.getenv("ProgramFiles(x86)") + "\\ffmpeg\\bin\\ffmpeg.exe",
             "C:\\ffmpeg\\bin\\ffmpeg.exe"
         ) else listOf(
-            "/usr/local/bin/ffmpeg",
             "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
             "/usr/bin/ffmpeg"
         )
 
-        for (path in systemPaths) {
-            if (path != null && File(path).exists()) return true
+        for (p in systemPaths) {
+            if (File(p).exists()) {
+                Log.d("NativeEncoderSimple", "Using system FFmpeg at: $p")
+                return p
+            }
         }
 
-        return try {
+        // Try PATH (which/where)
+        runCatching {
             val cmd = if (isWindows) listOf("where", "ffmpeg") else listOf("which", "ffmpeg")
-            val process = ProcessBuilder(cmd).start()
-            process.waitFor(1, TimeUnit.SECONDS)
-            process.exitValue() == 0
-        } catch (e: Exception) {
-            false
+            val proc = ProcessBuilder(cmd).start()
+            if (proc.waitFor(1, TimeUnit.SECONDS)) {
+                val out = proc.inputStream.bufferedReader().readText().lineSequence().firstOrNull()?.trim()
+                if (!out.isNullOrEmpty()) {
+                    Log.d("NativeEncoderSimple", "Using FFmpeg from PATH: $out")
+                    return out
+                }
+            }
+        }
+
+        throw RuntimeException("FFmpeg not found. No bundled resource and no system ffmpeg detected")
+    }
+
+    // Build robust input args for an image sequence from actual file names
+    private fun buildImageSequenceInputArgs(frameFiles: List<File>, fps: Int): List<String> {
+        val first = frameFiles.first()
+        val name = first.name
+        val dir = first.parentFile.absolutePath
+        val m = Regex("^(.*?)(\\d+)(\\.[A-Za-z0-9]+)$").find(name)
+        return if (m != null) {
+            val prefix = m.groupValues[1]
+            val digits = m.groupValues[2]
+            val ext = m.groupValues[3]
+            val pad = digits.length
+            val startNum = runCatching { digits.toInt() }.getOrElse { 1 }
+            val pattern = "$dir/${prefix}%0${pad}d${ext}"
+            val args = mutableListOf("-framerate", fps.toString(), "-pattern_type", "sequence")
+            if (startNum != 1) {
+                args += listOf("-start_number", startNum.toString())
+            }
+            args + listOf("-i", pattern)
+        } else {
+            // Fallback to glob pattern (e.g., ffcap_*.jpg)
+            val base = name.substringBeforeLast('.')
+            val prefixOnly = base.substringBeforeLast('_', base)
+            val ext = name.substringAfterLast('.', "jpg")
+            listOf("-framerate", fps.toString(), "-pattern_type", "glob", "-i", "$dir/${prefixOnly}_*.${ext}")
         }
     }
 
-    fun installFFmpeg(): Boolean {
-        // Try to install FFmpeg using Homebrew
-        return try {
-            Log.d("NativeEncoderSimple", "Attempting to install FFmpeg via Homebrew...")
-
-            // Check if Homebrew is installed
-            val brewCheck = ProcessBuilder("which", "brew").start()
-            brewCheck.waitFor(1, TimeUnit.SECONDS)
-
-            if (brewCheck.exitValue() != 0) {
-                Log.e("NativeEncoderSimple", "Homebrew not found. User needs to install manually.")
-                return false
-            }
-
-            // Install FFmpeg
-            val install = ProcessBuilder("brew", "install", "ffmpeg").start()
-            val success = install.waitFor(120, TimeUnit.SECONDS) && install.exitValue() == 0
-
-            if (success) {
-                Log.d("NativeEncoderSimple", "FFmpeg installed successfully")
-            } else {
-                Log.e("NativeEncoderSimple", "Failed to install FFmpeg")
-            }
-
-            success
-        } catch (e: Exception) {
-            Log.e("NativeEncoderSimple", "Error installing FFmpeg", e)
-            false
-        }
-    }
-
-    fun encodeWebP(
-        images: List<BufferedImage>,
-        outputFile: File,
-        quality: Int = 80,
-        fps: Int = 30,
-        onProgress: ((Int) -> Unit)? = null
-    ): Result<File> {
-        return try {
-            // Create temp directory for frames
-            val tempDir = File.createTempFile("webp_", "_frames").apply {
-                delete()
-                mkdirs()
-            }
-
-            try {
-                // Save frames as JPEG (faster than PNG)
-                // Skip frames for faster encoding: only use every 2nd frame when quality is low
-                val frameSkip = if (quality < 20) 2 else 1  // Skip every other frame for low quality
-                images.forEachIndexed { index, image ->
-                    if (index % frameSkip == 0) {
-                        val frameFile = File(tempDir, String.format("frame_%06d.jpg", index / frameSkip))
-                        ImageIO.write(image, "JPEG", frameFile)
-                    }
-                    onProgress?.invoke((index + 1) * 50 / images.size)
-                }
-
-                // Use bundled or system ffmpeg
-                val ffmpegPath = findFfmpeg()
-                Log.d("NativeEncoderSimple", "Using FFmpeg at: $ffmpegPath")
-
-                // Scale down for ultra fast encoding when quality is low
-                val scaleFilter = if (quality < 20) {
-                    listOf("-vf", "scale=iw/2:ih/2") // Half resolution for ultra fast mode
-                } else {
-                    emptyList()
-                }
-
-                val processArgs = mutableListOf(
-                    ffmpegPath,
-                    "-y", // Overwrite output
-                    "-stats", // Enable progress stats output
-                    "-threads", "0", // Use all available CPU cores for parallel processing
-                    "-framerate", fps.toString(),
-                    "-i", "${tempDir.absolutePath}/frame_%06d.jpg"
-                )
-                processArgs.addAll(scaleFilter)
-                processArgs.addAll(listOf(
-                    "-c:v", "libwebp",
-                    "-lossless", "0",
-                    "-quality", quality.toString(),
-                    "-compression_level", "0", // Fastest encoding (no compression optimization)
-                    "-method", "0", // Fastest method for speed
-                    "-preset", "default", // Default preset
-                    "-pass", "1", // Single pass encoding for speed
-                    "-loop", "0", // Infinite loop
-                    outputFile.absolutePath
-                ))
-
-                val process = ProcessBuilder(processArgs)
-                    .redirectErrorStream(true) // FFmpeg outputs to stderr
-                    .start()
-
-                // Monitor FFmpeg progress in a separate thread
-                val outputBuilder = StringBuilder()
-                val totalFrames = images.size / (if (quality < 20) 2 else 1) // Account for frame skipping
-
-                // Start at 50% since frame saving was 0-50%
-                Log.d("NativeEncoderSimple", "Starting FFmpeg encoding, initial progress: 50%")
-                onProgress?.invoke(50)
-
-                Thread {
-                    try {
-                        val reader = process.inputStream.bufferedReader()
-                        var line: String?
-                        var lastProgress = 50
-
-                        while (reader.readLine().also { line = it } != null) {
-                            outputBuilder.appendLine(line)
-                            // Debug log
-                            if (line?.contains("frame") == true) {
-                                Log.d("NativeEncoderSimple", "FFmpeg output: $line")
-                            }
-
-                            // FFmpeg outputs: "frame=   10 fps=..." or sometimes just numbers
-                            val framePattern = Regex("frame=\\s*(\\d+)")
-                            val match = framePattern.find(line ?: "")
-
-                            match?.groupValues?.get(1)?.toIntOrNull()?.let { currentFrame ->
-                                // Calculate progress from 50% to 95% (leave 5% for finalization)
-                                val encodingProgress = if (totalFrames > 0) {
-                                    (currentFrame * 45 / totalFrames).coerceIn(0, 45)
-                                } else {
-                                    20 // Default progress if we can't calculate
-                                }
-                                val totalProgress = 50 + encodingProgress
-                                if (totalProgress > lastProgress) {
-                                    Log.d("NativeEncoderSimple", "FFmpeg progress update: $totalProgress% (frame $currentFrame/$totalFrames)")
-                                    onProgress?.invoke(totalProgress)
-                                    lastProgress = totalProgress
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("NativeEncoderSimple", "Error reading FFmpeg output", e)
-                    }
-                }.start()
-
-                // Using only real FFmpeg progress
-
-                // Wait for process to complete
-                val success = process.waitFor(60, TimeUnit.SECONDS)
-                val output = outputBuilder.toString()
-
-                if (success && process.exitValue() == 0) {
-                    Log.d("NativeEncoderSimple", "FFmpeg completed successfully, setting progress to 100%")
-                    onProgress?.invoke(100)
-                    Result.success(outputFile)
-                } else {
-                    Log.e("NativeEncoderSimple", "FFmpeg failed with output: $output")
-                    Result.failure(Exception("FFmpeg encoding failed: ${output.take(200)}"))
-                }
-            } finally {
-                tempDir.deleteRecursively()
-            }
-        } catch (e: Exception) {
-            Log.e("NativeEncoderSimple", "Encoding error", e)
-            Result.failure(e)
-        }
-    }
 
     fun encodeWebPFromFiles(
         frameFiles: List<File>,
@@ -555,10 +422,10 @@ object NativeEncoderSimple {
                     "-y", // Overwrite output
                     "-stats", // Enable progress stats output
                     "-threads", "0", // Use all available CPU cores
-                    "-framerate", fps.toString(),
-                    "-pattern_type", "sequence",
-                    "-start_number", "0",
-                    "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                ))
+                // Input image sequence (support both numeric and glob patterns)
+                addAll(buildImageSequenceInputArgs(frameFiles, fps))
+                addAll(listOf(
                     "-c:v", "libwebp"
                 ))
             }
@@ -694,6 +561,7 @@ object NativeEncoderSimple {
         outputFile: File,
         fps: Int = 10,
         quality: Int = 50,
+        fastMode: Boolean = false,
         onProgress: ((Int) -> Unit)? = null
     ): Result<File> {
         return try {
@@ -746,27 +614,43 @@ object NativeEncoderSimple {
 
             // Get dimensions from first frame
             val firstImage = ImageIO.read(frameFiles[0])
-            var width = firstImage.width
-            var height = firstImage.height
+            val srcW = firstImage.width
+            val srcH = firstImage.height
 
-            // GIF için orijinal çözünürlüğü koruyalım veya çok az düşürelim
-            // Sadece çok büyük ekranlar için sınırlayalım (4K ve üzeri)
-            val maxDimension = when {
-                quality >= 30 -> 99999  // Yüksek kalite - scaling yok
-                quality >= 15 -> 2560   // Orta kalite - 2K/QHD max
-                else -> 1920            // Düşük kalite - Full HD max
+            // Derive target fps cap and scale factor from quality/fast mode
+            val low = quality <= 30
+            val mid = quality in 31..60
+            val targetFpsCap = when {
+                fastMode -> 10
+                low -> 10
+                mid -> 12
+                else -> 15
+            }
+            val scaleFactor = when {
+                fastMode -> 0.5
+                low -> 0.6
+                mid -> 0.75
+                else -> 1.0
+            }
+            val maxColors = when {
+                fastMode -> 64
+                low -> 64
+                mid -> 128
+                else -> 256
+            }
+            val dither = when {
+                fastMode -> "bayer:bayer_scale=5"
+                low -> "bayer:bayer_scale=5"
+                mid -> "sierra2_4a"
+                else -> "floyd_steinberg"
             }
 
-            if (width > maxDimension || height > maxDimension) {
-                val scale = maxDimension.toDouble() / maxOf(width, height)
-                width = (width * scale).toInt()
-                height = (height * scale).toInt()
-                Log.d("NativeEncoderSimple", "GIF scaled from ${firstImage.width}x${firstImage.height} to ${width}x${height}")
-            } else {
-                Log.d("NativeEncoderSimple", "GIF using original resolution: ${width}x${height}")
-            }
+            val targetFps = minOf(fps, targetFpsCap)
+            var width = (srcW * scaleFactor).toInt().coerceAtLeast(1)
+            var height = (srcH * scaleFactor).toInt().coerceAtLeast(1)
 
-            Log.d("NativeEncoderSimple", "GIF encoding: ${frameFiles.size} frames, ${width}x${height}, fps=$fps")
+            Log.d("NativeEncoderSimple", "GIF params: fastMode=$fastMode, targetFps=$targetFps, scaleFactor=$scaleFactor, size=${width}x${height}, maxColors=$maxColors, dither=$dither")
+            Log.d("NativeEncoderSimple", "GIF encoding: ${frameFiles.size} frames, ${width}x${height}, fps=$targetFps")
 
             // Start progress at 0
             onProgress?.invoke(0)
@@ -781,16 +665,16 @@ object NativeEncoderSimple {
                     addAll(ffmpegArgs)
                     addAll(listOf(
                         "-y",
-                        "-framerate", fps.toString(),
-                        "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
-                        "-vf", "fps=$fps,scale=$width:$height:flags=lanczos,palettegen=stats_mode=diff",
+                        // Input image sequence
+                        *buildImageSequenceInputArgs(frameFiles, targetFps).toTypedArray(),
+                        "-vf", "fps=$targetFps,scale=$width:$height:flags=lanczos,palettegen=max_colors=$maxColors:stats_mode=single",
                         paletteFile.absolutePath
                     ))
                 }
 
                 Log.d("NativeEncoderSimple", "Attempting to generate palette for better quality...")
                 val paletteProcess = ProcessBuilder(paletteCmd).start()
-                val paletteSuccess = paletteProcess.waitFor(30, TimeUnit.SECONDS)
+                val paletteSuccess = paletteProcess.waitFor(240, TimeUnit.SECONDS)
 
                 if (paletteSuccess && paletteProcess.exitValue() == 0 && paletteFile.exists()) {
                     Log.d("NativeEncoderSimple", "Palette generated successfully")
@@ -808,21 +692,16 @@ object NativeEncoderSimple {
             // Generate GIF with or without palette
             val gifCmd = if (usePalette) {
                 // Use palette for better quality
-                val dither = when {
-                    quality >= 40 -> "floyd_steinberg"  // Best quality dithering
-                    quality >= 20 -> "sierra2_4a"  // Balanced
-                    else -> "none"  // Fastest, smallest size
-                }
-
+                // Dither already derived above
                 mutableListOf<String>().apply {
                     add(executablePath)
                     addAll(ffmpegArgs)
                     addAll(listOf(
                         "-y",
-                        "-framerate", fps.toString(),
-                        "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                        // Input image sequence
+                        *buildImageSequenceInputArgs(frameFiles, targetFps).toTypedArray(),
                         "-i", paletteFile.absolutePath,
-                        "-lavfi", "fps=$fps,scale=$width:$height:flags=lanczos [x]; [x][1:v] paletteuse=dither=$dither",
+                        "-lavfi", "fps=$targetFps,scale=$width:$height:flags=lanczos [x]; [x][1:v] paletteuse=dither=$dither",
                         outputFile.absolutePath
                     ))
                 }
@@ -833,10 +712,9 @@ object NativeEncoderSimple {
                     addAll(ffmpegArgs)
                     addAll(listOf(
                         "-y",
-                        "-framerate", fps.toString(),
-                        "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
-                        "-vf", "fps=$fps,scale=$width:$height:flags=lanczos",
-                        "-pix_fmt", "rgb24",
+                        // Input image sequence
+                        *buildImageSequenceInputArgs(frameFiles, targetFps).toTypedArray(),
+                        "-vf", "fps=$targetFps,scale=$width:$height:flags=lanczos",
                         outputFile.absolutePath
                     ))
                 }
@@ -882,7 +760,7 @@ object NativeEncoderSimple {
             }.start()
 
             // Wait for process to complete
-            val success = process.waitFor(120, TimeUnit.SECONDS)
+            val success = process.waitFor(600, TimeUnit.SECONDS)
             val output = outputBuilder.toString()
 
             // Clean up palette file
@@ -956,8 +834,8 @@ object NativeEncoderSimple {
                 ffmpegPath,
                 "-y", // Overwrite output
                 "-stats", // Enable progress stats output
-                "-r", fps.toString(), // Input framerate
-                "-i", "${frameDir.absolutePath}/frame_%06d.jpg",
+                // Input image sequence
+                *buildImageSequenceInputArgs(frameFiles, fps).toTypedArray(),
                 "-vf", "scale=$width:$height", // Ensure dimensions are even
                 "-c:v", "libx264", // Use libx264 encoder
                 "-profile:v", profile, // Use high profile for near-lossless, baseline for compatibility
@@ -1039,72 +917,6 @@ object NativeEncoderSimple {
             }
         } catch (e: Exception) {
             Log.e("NativeEncoderSimple", "MP4 encoding error", e)
-            Result.failure(e)
-        }
-    }
-
-    fun encodeMP4(
-        images: List<BufferedImage>,
-        outputFile: File,
-        crf: Int = 23,
-        fps: Int = 30,
-        onProgress: ((Int) -> Unit)? = null
-    ): Result<File> {
-        return try {
-            // Create temp directory for frames
-            val tempDir = File.createTempFile("mp4_", "_frames").apply {
-                delete()
-                mkdirs()
-            }
-
-            try {
-                // Save frames as PNG
-                images.forEachIndexed { index, image ->
-                    val frameFile = File(tempDir, String.format("frame_%06d.png", index))
-                    ImageIO.write(image, "PNG", frameFile)
-                    onProgress?.invoke((index + 1) * 50 / images.size)
-                }
-
-                // Use bundled or system ffmpeg
-                val ffmpegPath = findFfmpeg()
-                Log.d("NativeEncoderSimple", "Using FFmpeg at: $ffmpegPath")
-
-                // Get dimensions (ensure divisible by 2 for H.264)
-                val width = if (images.isNotEmpty()) images[0].width else 1920
-                val height = if (images.isNotEmpty()) images[0].height else 1080
-                val adjustedWidth = if (width % 2 == 0) width else width - 1
-                val adjustedHeight = if (height % 2 == 0) height else height - 1
-
-                // Use libx264 encoder for MP4
-                val process = ProcessBuilder(
-                    ffmpegPath,
-                    "-y", // Overwrite output
-                    "-framerate", fps.toString(),
-                    "-i", "${tempDir.absolutePath}/frame_%06d.png",
-                    "-vf", "scale=$adjustedWidth:$adjustedHeight", // Ensure dimensions are even
-                    "-c:v", "libx264", // Use libx264 encoder
-                    "-pix_fmt", "yuv420p",
-                    "-preset", "medium",
-                    "-crf", crf.toString(), // Use CRF directly for quality control
-                    "-movflags", "+faststart",
-                    outputFile.absolutePath
-                ).redirectErrorStream(true).start()
-
-                // Read output for debugging
-                val output = process.inputStream.bufferedReader().use { it.readText() }
-                val success = process.waitFor(30, TimeUnit.SECONDS)
-
-                if (success && process.exitValue() == 0) {
-                    onProgress?.invoke(100)
-                    Result.success(outputFile)
-                } else {
-                    Log.e("NativeEncoderSimple", "FFmpeg failed with output: $output")
-                    Result.failure(Exception("FFmpeg encoding failed: ${output.take(200)}"))
-                }
-            } finally {
-                tempDir.deleteRecursively()
-            }
-        } catch (e: Exception) {
             Result.failure(e)
         }
     }

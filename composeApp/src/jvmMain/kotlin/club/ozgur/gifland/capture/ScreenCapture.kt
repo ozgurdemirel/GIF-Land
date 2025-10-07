@@ -44,24 +44,57 @@ class ScreenCapture {
                 bounds.contains(mouseLocation)
             } ?: screens.firstOrNull() ?: return@runCatching null
 
-            val screenIndex = screens.indexOf(targetScreen)
+            val os = System.getProperty("os.name").lowercase()
+            val command = mutableListOf<String>()
+            command += ffmpegPath
 
-            val command = mutableListOf(
-                ffmpegPath,
-                "-f", "avfoundation",
-                "-capture_cursor", "1",
-                "-i", "$screenIndex",
-                "-r", "1",
-                "-vframes", "1"
-            )
-
-            if (area != null) {
-                command.addAll(listOf(
-                    "-vf", "crop=${area.width}:${area.height}:${area.x}:${area.y}"
-                ))
+            if (os.contains("mac") || os.contains("darwin")) {
+                val screenOrdinal = screens.indexOf(targetScreen).coerceAtLeast(0)
+                val screenIndex = screenOrdinal + 1 // avfoundation screen devices usually start at 1 (Capture screen 0)
+                command += listOf("-f", "avfoundation", "-capture_cursor", "1", "-i", "$screenIndex:none")
+                if (area != null) {
+                    val bounds = targetScreen.defaultConfiguration.bounds
+                    val relX = (area.x - bounds.x).coerceAtLeast(0)
+                    val relY = (area.y - bounds.y).coerceAtLeast(0)
+                    command += listOf("-vf", "crop=${area.width}:${area.height}:${relX}:${relY}")
+                }
+                command += listOf("-r", "1", "-vframes", "1")
+            } else if (os.contains("win")) {
+                command += listOf("-f", "gdigrab", "-draw_mouse", "1")
+                if (area != null) {
+                    command += listOf(
+                        "-offset_x", area.x.toString(),
+                        "-offset_y", area.y.toString(),
+                        "-video_size", "${area.width}x${area.height}",
+                        "-i", "desktop"
+                    )
+                } else {
+                    command += listOf("-i", "desktop")
+                }
+                command += listOf("-r", "1", "-vframes", "1")
+            } else {
+                // Linux (X11)
+                val display = System.getenv("DISPLAY") ?: ":0.0"
+                val bounds = targetScreen.defaultConfiguration.bounds
+                command += listOf("-f", "x11grab", "-draw_mouse", "1")
+                if (area != null) {
+                    command += listOf(
+                        "-framerate", "1",
+                        "-video_size", "${area.width}x${area.height}",
+                        "-i", "$display+${area.x},${area.y}",
+                        "-vframes", "1"
+                    )
+                } else {
+                    command += listOf(
+                        "-framerate", "1",
+                        "-video_size", "${bounds.width}x${bounds.height}",
+                        "-i", "$display+${bounds.x},${bounds.y}",
+                        "-vframes", "1"
+                    )
+                }
             }
 
-            command.add(outputFile.absolutePath)
+            command += outputFile.absolutePath
 
             val process = ProcessBuilder(command)
                 .redirectErrorStream(true)

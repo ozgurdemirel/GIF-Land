@@ -5,5 +5,6 @@ data class RecorderSettings(
     val quality: Int = 15,
     val format: OutputFormat = OutputFormat.GIF,
     val maxDuration: Int = 30,
-    val scale: Float = 1.0f  // Keep it but hidden from UI
+    val scale: Float = 1.0f,  // Keep it but hidden from UI
+    val fastGifPreview: Boolean = false // Fast/preview GIF mode toggle
 )
