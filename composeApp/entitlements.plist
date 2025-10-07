@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Allow JNI for Compose/Kotlin -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Allow loading unsigned libraries (for FFmpeg) -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Disable library validation to allow loading FFmpeg -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Allow audio input (required by FFmpeg even if not used) -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Allow camera (required by FFmpeg even if not used) -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+</dict>
+</plist>

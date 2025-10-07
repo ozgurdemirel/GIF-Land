@@ -113,6 +113,21 @@ compose.desktop {
                     iconFile.set(macIcon)
                 }
                 bundleID = "club.ozgur.gifland"
+
+                // Required permissions for screen recording
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSScreenCaptureUsageDescription</key>
+                        <string>WebP Recorder needs screen recording permission to capture your screen.</string>
+                        <key>NSCameraUsageDescription</key>
+                        <string>WebP Recorder does not use the camera.</string>
+                        <key>NSMicrophoneUsageDescription</key>
+                        <string>WebP Recorder does not use the microphone.</string>
+                    """.trimIndent()
+                }
+
+                // Entitlements for hardened runtime
+                entitlementsFile.set(project.file("entitlements.plist"))
             }
 
             linux {
