@@ -19,9 +19,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           architecture: 'aarch64'
+      - name: Verify Swift and Xcode
+        run: |
+          swift --version
+          xcodebuild -version
       - name: Build macOS DMG
         run: |
           chmod +x ./scripts/**/*.sh
+          # Swift bridge for ScreenCaptureKit will be built automatically by Gradle
           # JAVE2 provides signed FFmpeg binaries - no need to build
           ./scripts/package/create-full-package.sh
       - name: Upload macOS artifact
@@ -42,9 +47,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           architecture: 'x64'  # Intel architecture
+      - name: Verify Swift and Xcode
+        run: |
+          swift --version
+          xcodebuild -version
       - name: Build macOS Intel DMG
         run: |
           chmod +x ./scripts/**/*.sh
+          # Swift bridge for ScreenCaptureKit will be built automatically by Gradle
           # JAVE2 provides signed FFmpeg binaries - no need to build
           ./scripts/package/create-full-package-mac-intel.sh
       - name: Upload macOS Intel artifact

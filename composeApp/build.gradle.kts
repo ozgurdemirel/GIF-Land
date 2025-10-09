@@ -174,5 +174,7 @@ val buildSckBridgeMac by tasks.registering(Exec::class) {
 }
 
 tasks.named("jvmProcessResources") {
-    dependsOn(buildSckBridgeMac)
+    if (OperatingSystem.current().isMacOsX) {
+        dependsOn(buildSckBridgeMac)
+    }
 }
