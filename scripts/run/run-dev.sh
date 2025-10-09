@@ -69,6 +69,7 @@ echo ""
     -Dkotlin.daemon.jvmargs="-Xmx2G" \
     --parallel \
     --console=plain \
+    --no-configuration-cache \
     $(if [ "$CLEAN_BUILD" = true ]; then echo "--rerun-tasks"; fi)
 
 # Alternative for running distributable:

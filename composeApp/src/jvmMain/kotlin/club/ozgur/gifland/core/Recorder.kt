@@ -1,8 +1,10 @@
 package club.ozgur.gifland.core
 
-import club.ozgur.gifland.capture.ScreenCapture
-import club.ozgur.gifland.capture.FFmpegFrameCapture
-import club.ozgur.gifland.capture.FFmpegFrameCapture.FFmpegCaptureSession
+import club.ozgur.gifland.capture.strategy.ScreenCaptureStrategy
+import club.ozgur.gifland.capture.strategy.FFmpegCaptureStrategy
+import club.ozgur.gifland.capture.strategy.RobotApiCaptureStrategy
+import club.ozgur.gifland.capture.strategy.ScreenCaptureKitStrategy
+
 
 import club.ozgur.gifland.encoder.NativeEncoderSimple
 import club.ozgur.gifland.encoder.JAVEEncoder
@@ -27,7 +29,9 @@ data class RecordingState(
     val duration: Int = 0, // seconds
     val estimatedSize: Long = 0L,
     val isSaving: Boolean = false,
-    val saveProgress: Int = 0
+    val saveProgress: Int = 0,
+    val captureMethod: String? = null,
+    val captureMethodDetails: String? = null
 )
 
 
@@ -40,8 +44,10 @@ data class RecordingState(
 class Recorder {
 	private var tempDir: File? = null
 	private val frameFiles = mutableListOf<File>()
-    private var ffmpegSession: FFmpegCaptureSession? = null
+    private var captureStrategy: ScreenCaptureStrategy? = null
     private var collectorJob: Job? = null
+    private var fallbackStep: Int = 0 // 0: primary, 1: first fallback, 2: second fallback (final)
+
 
 	private var cumulativeBytes: Long = 0
 
@@ -128,13 +134,13 @@ class Recorder {
 		tempDir = File(System.getProperty("java.io.tmpdir"), "gifland_${sessionStamp}").also { it.mkdirs() }
 		Log.d("Recorder", "Temp dir created: ${tempDir?.absolutePath}")
 
-        // Start FFmpeg-based image sequence capture
-        val jpegQscale = when {
-            settings.quality >= 45 -> 3
-            settings.quality >= 35 -> 5
-            settings.quality >= 25 -> 7
-            settings.quality >= 15 -> 10
-            else -> 12
+        // Start using Strategy pattern: prefer ScreenCaptureKit (macOS), then Robot, then FFmpeg
+        val jpegQualityPercent = when {
+            settings.quality >= 45 -> 92
+            settings.quality >= 35 -> 88
+            settings.quality >= 25 -> 85
+            settings.quality >= 15 -> 80
+            else -> 75
         }
         // Ensure FFmpeg path is set (prefer JAVE2 signed binary on macOS)
         runCatching {
@@ -144,57 +150,169 @@ class Recorder {
             }
         }.onFailure { e -> Log.d("Recorder", "Could not set JAVE2 FFmpeg path: ${e.message}") }
 
-        val session = FFmpegFrameCapture.start(area = area, fps = clampedFps, scale = settings.scale, qscale = jpegQscale, outDir = tempDir!!)
-        ffmpegSession = session
+        fallbackStep = 0
+        val isMac = System.getProperty("os.name").lowercase().contains("mac") || System.getProperty("os.name").lowercase().contains("darwin")
+        var sckInitFailureMsg: String? = null
+        // Cap SCK FPS to 5 to reduce load on JPEG encoding
+        val sckFps = minOf(clampedFps, 5)
+        captureStrategy = if (isMac) {
+            runCatching {
+                ScreenCaptureKitStrategy().also { it.start(area, sckFps, settings.scale, jpegQualityPercent, tempDir!!) }
+            }.onFailure { err ->
+                val msg = err.message?.takeIf { it.isNotBlank() }
+                sckInitFailureMsg = if (msg != null) "ScreenCaptureKit başlatılamadı: $msg" else "ScreenCaptureKit başlatılamadı"
+                Log.d("Recorder", "SCK unavailable, falling back to Robot: ${err.message}")
+            }
+             .getOrElse { RobotApiCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) } }
+        } else {
+            RobotApiCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
+        }
+        // Update capture method label in state (and any initial failure details)
+        runCatching {
+            val currentMethod = when (captureStrategy) {
+                is ScreenCaptureKitStrategy -> "ScreenCaptureKit"
+                is RobotApiCaptureStrategy -> "Robot API"
+                is FFmpegCaptureStrategy -> "FFmpeg"
+                else -> null
+            }
+            val details = when (captureStrategy) {
+                is RobotApiCaptureStrategy -> sckInitFailureMsg
+                else -> null
+            }
+            _state.value = _state.value.copy(captureMethod = currentMethod, captureMethodDetails = details)
+        }
 
-        // Early diagnostics: surface helpful error if no frames arrive soon after start
+        // Early diagnostics & fallback: if no frames after a short while, advance through fallback chain
         CoroutineScope(Dispatchers.IO).launch {
             delay(3000)
             if (_state.value.isRecording && frameFiles.isEmpty()) {
-                val alive = ffmpegSession?.process?.isAlive ?: false
+                val alive = captureStrategy?.isRunning() ?: false
                 val logSnippet = runCatching {
-                    ffmpegSession?.logFile?.takeIf { it.exists() }?.readText()?.take(1000)
+                    tempDir?.let { File(it, "ffmpeg_capture.log") }?.takeIf { it.exists() }?.readText()?.take(1000)
                 }.getOrNull()
+
+                if (fallbackStep == 0) {
+                    // First fallback step
+                    when (captureStrategy) {
+                        is ScreenCaptureKitStrategy -> {
+                            Log.d("Recorder", "No frames; switching from ScreenCaptureKit to Robot fallback. prevAlive=$alive")
+                            runCatching { captureStrategy?.stop() }
+                            captureStrategy = RobotApiCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
+                            val method = "Robot API"
+                            val details = "ScreenCaptureKit kare üretemedi"
+                            _state.value = _state.value.copy(captureMethod = method, captureMethodDetails = details)
+                            withContext(Dispatchers.Main) { onUpdate(_state.value) }
+                        }
+                        is RobotApiCaptureStrategy -> {
+                            Log.d("Recorder", "No frames; switching from Robot to FFmpeg fallback. prevAlive=$alive")
+                            runCatching { captureStrategy?.stop() }
+                            captureStrategy = FFmpegCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
+                            val method = "FFmpeg"
+                            val details = "Robot API kare uretemedi"
+                            _state.value = _state.value.copy(captureMethod = method, captureMethodDetails = details)
+                            withContext(Dispatchers.Main) { onUpdate(_state.value) }
+                        }
+                        else -> {
+                            Log.d("Recorder", "No frames; switching to FFmpeg fallback as default. prevAlive=$alive")
+                            runCatching { captureStrategy?.stop() }
+                            captureStrategy = FFmpegCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
+                            val method = "FFmpeg"
+                            val details = "Onceki yontem kare uretemedi"
+                            _state.value = _state.value.copy(captureMethod = method, captureMethodDetails = details)
+                            withContext(Dispatchers.Main) { onUpdate(_state.value) }
+                        }
+                    }
+                    fallbackStep = 1
+                    return@launch
+                } else if (fallbackStep == 1) {
+                    // Second fallback step (ensure FFmpeg is used)
+                    if (captureStrategy !is FFmpegCaptureStrategy) {
+                        Log.d("Recorder", "No frames; enforcing FFmpeg as final fallback. prevAlive=$alive")
+                        runCatching { captureStrategy?.stop() }
+                        captureStrategy = FFmpegCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
+                        val method = "FFmpeg"
+                        val details = "Son care FFmpeg'e gecildi"
+                        _state.value = _state.value.copy(captureMethod = method, captureMethodDetails = details)
+                        withContext(Dispatchers.Main) { onUpdate(_state.value) }
+                    }
+                    fallbackStep = 2
+                    return@launch
+                }
+
                 val baseMsg = if (!alive) {
-                    "Ekran yakalama başlatılamadı (FFmpeg süreci erken sona erdi)."
+                    "Ekran yakalama başlatılamadı (yakalama stratejisi erken sona erdi)."
                 } else {
                     "Ekran yakalama beklenen sürede kare üretemedi."
                 }
                 val hint = buildString {
                     append(" Olası nedenler: ")
                     append("• macOS ekran kaydı izni verilmemiş olabilir (Sistem Ayarları > Gizlilik ve Güvenlik > Ekran Kaydı). ")
-                    append("• Güvenlik/İmza (code signing) veya FFmpeg erişim izinleri. ")
+                    append("• Güvenlik/İmza (code signing) veya FFmpeg/Robot erişim izinleri. ")
                     append("• Harici monitör/sıralama farkları.")
                 }
                 _lastError.value = baseMsg + hint + (logSnippet?.let { "\nFFmpeg günlük özeti:\n" + it } ?: "")
-                Log.e("Recorder", "Early no-frames condition. alive=$alive")
+                Log.e("Recorder", "Early no-frames condition. alive=$alive (after fallback)")
             }
         }
 
         // Start collector to watch output directory and update state
         collectorJob = CoroutineScope(Dispatchers.IO).launch {
             var lastCount = 0
+            var lastCountChangeAt = System.currentTimeMillis()
+            var lastDurationEmitted = -1
             while (isActive && _state.value.isRecording) {
                 try {
-                    val files = session.outDir.listFiles { f -> f.isFile && f.name.endsWith(".jpg") }?.sortedBy { it.name } ?: emptyList()
+                    val out = tempDir
+                    val files = out?.listFiles { f -> f.isFile && f.name.endsWith(".jpg") }?.sortedBy { it.name } ?: emptyList()
                     if (files.size > frameFiles.size) {
                         val newFiles = files.drop(frameFiles.size)
                         frameFiles.addAll(newFiles)
                         newFiles.forEach { cumulativeBytes += it.length() }
                     }
 
-                    val currentTime = System.currentTimeMillis()
-                    val duration = ((currentTime - startTime) / 1000).toInt()
+                    val now = System.currentTimeMillis()
+                    val duration = ((now - startTime) / 1000).toInt()
 
+                    // Emit updates when frames changed
                     if (frameFiles.size != lastCount) {
                         lastCount = frameFiles.size
+                        lastCountChangeAt = now
                         _state.value = _state.value.copy(
                             frameCount = frameFiles.size,
                             duration = duration,
                             estimatedSize = cumulativeBytes
                         )
-                        withContext(Dispatchers.Main) {
-                            onUpdate(_state.value)
+                        withContext(Dispatchers.Main) { onUpdate(_state.value) }
+                    } else if (duration != lastDurationEmitted) {
+                        // Also keep the timer UI progressing even if frames stall
+                        lastDurationEmitted = duration
+                        _state.value = _state.value.copy(duration = duration, estimatedSize = cumulativeBytes)
+                        withContext(Dispatchers.Main) { onUpdate(_state.value) }
+                    }
+
+                    // Detect true capture stall for SCK using its native frame heartbeat; otherwise use file growth
+                    // Note: SCK stall detection disabled because JPEG encoding is slow
+                    val sckHeartbeatStalled = false  // Disabled for ScreenCaptureKit
+                    val genericStalled = frameFiles.isNotEmpty() && now - lastCountChangeAt > 2000
+
+                    if (sckHeartbeatStalled || (captureStrategy !is ScreenCaptureKitStrategy && genericStalled)) {
+                        Log.d("Recorder", "Frame stream stalled for >2s; attempting fallback. currentStrategy=${captureStrategy?.javaClass?.simpleName}")
+                        when (captureStrategy) {
+                            is ScreenCaptureKitStrategy -> {
+                                // Only fallback if SCK truly stopped producing frames (not just slow encoding)
+                                runCatching { captureStrategy?.stop() }
+                                captureStrategy = RobotApiCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
+                                _state.value = _state.value.copy(captureMethod = "Robot API", captureMethodDetails = "ScreenCaptureKit kare akışı durdu")
+                                withContext(Dispatchers.Main) { onUpdate(_state.value) }
+                                lastCountChangeAt = now // reset after switching
+                            }
+                            is RobotApiCaptureStrategy -> {
+                                runCatching { captureStrategy?.stop() }
+                                captureStrategy = FFmpegCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
+                                _state.value = _state.value.copy(captureMethod = "FFmpeg", captureMethodDetails = "Robot API kare akışı durdu")
+                                withContext(Dispatchers.Main) { onUpdate(_state.value) }
+                                lastCountChangeAt = now
+                            }
                         }
                     }
 
@@ -218,6 +336,7 @@ class Recorder {
                 delay(100)
             }
         }
+
         recordingJob = collectorJob
     }
 
@@ -236,9 +355,9 @@ class Recorder {
         recordingJob = null
         collectorJob?.cancel()
         collectorJob = null
-        // Stop FFmpeg process gracefully
-        ffmpegSession?.let { FFmpegFrameCapture.stop(it) }
-        ffmpegSession = null
+        // Stop current capture strategy gracefully
+        runCatching { captureStrategy?.stop() }
+        captureStrategy = null
 
         // Calculate actual recording duration
         val actualDurationMs = System.currentTimeMillis() - startTime

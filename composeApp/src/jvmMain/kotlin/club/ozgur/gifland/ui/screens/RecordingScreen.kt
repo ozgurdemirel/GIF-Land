@@ -211,7 +211,21 @@ object RecordingScreen : Screen {
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(32.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Yakalama Yöntemi etiketi
+                        run {
+                            val method = recordingState.captureMethod ?: "Bilinmiyor"
+                            val details = recordingState.captureMethodDetails
+                            val label = if (!details.isNullOrBlank()) "$method ($details)" else method
+                            Text(
+                                text = "Yakalama Yöntemi: $label",
+                                fontSize = 14.sp,
+                                color = Color.Gray
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         // Uyarı
                         if (recordingState.duration > recorder.settings.maxDuration * 0.8) {

@@ -1,5 +1,7 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
+import org.gradle.internal.os.OperatingSystem
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
@@ -10,7 +12,7 @@ plugins {
 
 kotlin {
     jvm()
-    
+
     sourceSets {
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -22,13 +24,13 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
-            
+
             // Coroutines
             implementation(libs.kotlinx.coroutinesCore)
-            
+
             // Serialization
             implementation(libs.kotlinx.serializationJson)
-            
+
             // DateTime
             implementation(libs.kotlinx.datetime)
 
@@ -70,6 +72,9 @@ kotlin {
                     implementation("ws.schild:jave-nativebin-linux64:3.5.0")
                 }
             }
+
+            // JNA for ScreenCaptureKit bridge
+            implementation("net.java.dev.jna:jna:5.14.0")
         }
     }
 }
@@ -135,4 +140,39 @@ compose.desktop {
             }
         }
     }
+}
+
+
+// Build ScreenCaptureKit Swift bridge and copy into resources on macOS
+val swiftSrc = layout.projectDirectory.dir("native/Swift")
+val resourcesDir = layout.projectDirectory.dir("src/jvmMain/resources")
+
+val buildSckBridgeMac by tasks.registering(Exec::class) {
+    // Exec with dynamic script; mark as not CC-compatible
+    notCompatibleWithConfigurationCache("Swift build script is dynamic")
+    onlyIf { OperatingSystem.current().isMacOsX }
+    workingDir = swiftSrc.asFile
+
+    doFirst {
+        file("${resourcesDir.asFile}/natives/darwin/arm64").mkdirs()
+        file("${resourcesDir.asFile}/natives/darwin/x64").mkdirs()
+        file(layout.buildDirectory.dir("native").get().asFile.absolutePath).mkdirs()
+    }
+
+    val nativeOut = layout.buildDirectory.dir("native").get().asFile.absolutePath
+    commandLine("bash", "-c", """
+        set -e
+        swiftc -emit-library -module-name sck_bridge_swift -target arm64-apple-macos12 SCKBridge.swift \
+          -o "$nativeOut/libsck_bridge_swift.arm64.dylib" \
+          -framework ScreenCaptureKit -framework Foundation -framework CoreMedia -framework CoreVideo
+        swiftc -emit-library -module-name sck_bridge_swift -target x86_64-apple-macos12 SCKBridge.swift \
+          -o "$nativeOut/libsck_bridge_swift.x64.dylib" \
+          -framework ScreenCaptureKit -framework Foundation -framework CoreMedia -framework CoreVideo
+        cp "$nativeOut/libsck_bridge_swift.arm64.dylib" "${resourcesDir.asFile}/natives/darwin/arm64/libsck_bridge_swift.dylib"
+        cp "$nativeOut/libsck_bridge_swift.x64.dylib" "${resourcesDir.asFile}/natives/darwin/x64/libsck_bridge_swift.dylib"
+    """.trimIndent())
+}
+
+tasks.named("jvmProcessResources") {
+    dependsOn(buildSckBridgeMac)
 }
