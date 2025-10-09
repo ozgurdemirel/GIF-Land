@@ -28,16 +28,8 @@ object FFmpegFrameCapture {
      */
     fun start(area: CaptureArea?, fps: Int, scale: Float, qscale: Int, outDir: File): FFmpegCaptureSession {
         val os = System.getProperty("os.name").lowercase()
-        // Prefer JAVE2's signed FFmpeg on macOS to avoid TCC/security issues
-        val ffmpeg = if ((os.contains("mac") || os.contains("darwin")) && club.ozgur.gifland.encoder.JAVEEncoder.isAvailable()) {
-            club.ozgur.gifland.encoder.JAVEEncoder.getFFmpegPath()?.also {
-                Log.d("FFmpegFrameCapture", "Using JAVE2 signed FFmpeg for capture: $it")
-                // Also set globally so other components use the same path
-                club.ozgur.gifland.encoder.NativeEncoderSimple.setFFmpegPath(it)
-            } ?: NativeEncoderSimple.findFfmpeg()
-        } else {
-            NativeEncoderSimple.findFfmpeg()
-        }
+        val ffmpeg = club.ozgur.gifland.encoder.JAVEEncoder.getFFmpegPath()
+            ?: throw IllegalStateException("JAVE2 FFmpeg not available - check Gradle dependencies")
         outDir.mkdirs()
         val outputPattern = File(outDir, "ffcap_%06d.jpg").absolutePath
         val logFile = File(outDir, "ffmpeg_capture.log")

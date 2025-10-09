@@ -10,314 +10,11 @@ import javax.imageio.ImageIO
  */
 object NativeEncoderSimple {
 
-    private var bundledFfmpegPath: File? = null
-    private var customFFmpegPath: String? = null
 
-    fun setFFmpegPath(path: String) {
-        customFFmpegPath = path
-        Log.d("NativeEncoderSimple", "Custom FFmpeg path set: $path")
-    }
-
-    private fun getBundledFfmpeg(): File? {
-        // First check if we have a custom FFmpeg path set (e.g., from JAVE2)
-        if (!customFFmpegPath.isNullOrEmpty()) {
-            val customFile = File(customFFmpegPath!!)
-            if (customFile.exists()) {
-                Log.d("NativeEncoderSimple", "Using custom FFmpeg: $customFFmpegPath")
-                return customFile
-            }
-        }
-
-        if (bundledFfmpegPath?.exists() == true) {
-            return bundledFfmpegPath
-        }
-
-        return try {
-            val osName = System.getProperty("os.name").lowercase()
-            val isWindows = osName.contains("win")
-            val bundledPath = when {
-                isWindows -> "/native/windows/ffmpeg.exe"
-                osName.contains("mac") || osName.contains("darwin") -> "/native/macos/ffmpeg"
-                else -> "/native/macos/ffmpeg"
-            }
-
-            val resourceStream = NativeEncoderSimple::class.java.getResourceAsStream(bundledPath)
-            if (resourceStream != null) {
-                val suffix = if (isWindows) ".exe" else ""
-                val tempFile = File(System.getProperty("java.io.tmpdir"), "gifland_ffmpeg_${System.currentTimeMillis()}$suffix")
-                tempFile.deleteOnExit()
-                Log.d("NativeEncoderSimple", "Extracting FFmpeg to: ${tempFile.absolutePath}")
-                FFmpegDebugManager.updateExtractionPath(tempFile.absolutePath)
-
-                resourceStream.use { input ->
-                    tempFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-
-                // Update file size in debug info
-                FFmpegDebugManager.updateFileSize(tempFile.length())
-
-                // Ensure executable on Unix-like systems
-                if (!isWindows) {
-                    // Set executable permissions
-                    runCatching {
-                        val makeExecutable = ProcessBuilder("chmod", "+x", tempFile.absolutePath).start()
-                        makeExecutable.waitFor()
-                    }
-                    if (!tempFile.canExecute()) {
-                        tempFile.setExecutable(true, false)
-                    }
-
-                    // macOS specific: Try to make FFmpeg work without signing issues
-                    if (osName.contains("mac") || osName.contains("darwin")) {
-                        Log.d("NativeEncoderSimple", "Preparing FFmpeg for macOS execution...")
-
-                        // Step 1: Remove all extended attributes including quarantine
-                        runCatching {
-                            Log.d("NativeEncoderSimple", "Removing extended attributes from FFmpeg")
-                            val removeAttrs = ProcessBuilder("xattr", "-cr", tempFile.absolutePath).start()
-                            val output = removeAttrs.inputStream.readBytes().decodeToString() +
-                                        removeAttrs.errorStream.readBytes().decodeToString()
-                            removeAttrs.waitFor(5, TimeUnit.SECONDS)
-                            val exitCode = removeAttrs.exitValue()
-
-                            FFmpegDebugManager.addCommand(
-                                "xattr -cr ${tempFile.name}",
-                                exitCode,
-                                output.ifBlank { "Success - attributes removed" }
-                            )
-
-                            if (exitCode != 0) {
-                                // Try alternative: remove specific com.apple.quarantine
-                                val removeQuarantine = ProcessBuilder("xattr", "-d", "com.apple.quarantine", tempFile.absolutePath).start()
-                                val quarantineOutput = removeQuarantine.inputStream.readBytes().decodeToString() +
-                                                      removeQuarantine.errorStream.readBytes().decodeToString()
-                                removeQuarantine.waitFor(5, TimeUnit.SECONDS)
-                                val quarantineExitCode = removeQuarantine.exitValue()
-
-                                FFmpegDebugManager.addCommand(
-                                    "xattr -d com.apple.quarantine ${tempFile.name}",
-                                    quarantineExitCode,
-                                    quarantineOutput.ifBlank { "Success - quarantine removed" }
-                                )
-                            }
-                        }.onFailure { e ->
-                            Log.d("NativeEncoderSimple", "Could not remove attributes: ${e.message}")
-                            FFmpegDebugManager.setError("Failed to remove attributes: ${e.message}")
-                        }
-
-                        // Step 2: Add local ad-hoc signature (creates new signature valid on THIS machine)
-                        runCatching {
-                            Log.d("NativeEncoderSimple", "Adding local ad-hoc signature to FFmpeg")
-
-                            // First, remove any existing signature
-                            val removeSignProcess = ProcessBuilder(
-                                "codesign",
-                                "--remove-signature",
-                                tempFile.absolutePath
-                            ).start()
-                            removeSignProcess.waitFor(5, TimeUnit.SECONDS)
-
-                            // Try simple ad-hoc signature (more compatible)
-                            val signProcess = ProcessBuilder(
-                                "codesign",
-                                "--force",           // Replace any existing signature
-                                "--sign", "-",       // Ad-hoc signature
-                                tempFile.absolutePath
-                            ).start()
-
-                            val signOutput = signProcess.inputStream.readBytes().decodeToString() +
-                                           signProcess.errorStream.readBytes().decodeToString()
-                            val signed = signProcess.waitFor(10, TimeUnit.SECONDS)
-                            val signExitCode = signProcess.exitValue()
-
-                            FFmpegDebugManager.addCommand(
-                                "codesign --force --sign - ${tempFile.name}",
-                                signExitCode,
-                                signOutput.ifBlank { "Success - ad-hoc signature added" }
-                            )
-
-                            if (signed && signExitCode == 0) {
-                                Log.d("NativeEncoderSimple", "Successfully signed FFmpeg locally")
-                            } else {
-                                // If simple signing failed, try with more options
-                                Log.d("NativeEncoderSimple", "Simple signing failed, trying with timestamp and hardened runtime...")
-
-                                // Try WITHOUT hardened runtime (which can cause SIGKILL/error 137)
-                                val advancedSignProcess = ProcessBuilder(
-                                    "codesign",
-                                    "--force",
-                                    "--deep",
-                                    "--sign", "-",
-                                    "--timestamp=none",
-                                    tempFile.absolutePath
-                                ).start()
-
-                                val advancedSignOutput = advancedSignProcess.inputStream.readBytes().decodeToString() +
-                                                       advancedSignProcess.errorStream.readBytes().decodeToString()
-                                advancedSignProcess.waitFor(10, TimeUnit.SECONDS)
-                                val advancedSignExitCode = advancedSignProcess.exitValue()
-
-                                FFmpegDebugManager.addCommand(
-                                    "codesign --force --deep --sign - --timestamp=none ${tempFile.name}",
-                                    advancedSignExitCode,
-                                    advancedSignOutput.ifBlank { "Success - deep signature without hardened runtime" }
-                                )
-                            }
-                        }.onFailure { e ->
-                            Log.d("NativeEncoderSimple", "Could not sign binary (will try to run anyway): ${e.message}")
-                            FFmpegDebugManager.setError("Failed to sign binary: ${e.message}")
-                        }
-
-                        // Step 3: Verify the binary is ready
-                        runCatching {
-                            val verifyProcess = ProcessBuilder("codesign", "-v", "-v", tempFile.absolutePath).start()
-                            val verifyOutput = verifyProcess.inputStream.readBytes().decodeToString() +
-                                             verifyProcess.errorStream.readBytes().decodeToString()
-                            verifyProcess.waitFor(2, TimeUnit.SECONDS)
-                            val verifyExitCode = verifyProcess.exitValue()
-
-                            FFmpegDebugManager.addCommand(
-                                "codesign -v -v ${tempFile.name}",
-                                verifyExitCode,
-                                verifyOutput.ifBlank { "Success - signature verified" }
-                            )
-
-                            if (verifyExitCode == 0) {
-                                Log.d("NativeEncoderSimple", "FFmpeg signature verified successfully")
-                                FFmpegDebugManager.updateVerification("✅ Signature valid and verified")
-                            } else {
-                                FFmpegDebugManager.updateVerification("⚠️ Signature verification failed (exit code: $verifyExitCode)")
-                            }
-                        }
-
-                        // Get FFmpeg version and architecture info
-                        runCatching {
-                            val versionProcess = ProcessBuilder(tempFile.absolutePath, "-version").start()
-                            val versionOutput = versionProcess.inputStream.bufferedReader().readLines()
-                            val versionError = versionProcess.errorStream.bufferedReader().readLines()
-                            versionProcess.waitFor(2, TimeUnit.SECONDS)
-                            val versionExitCode = versionProcess.exitValue()
-
-                            if (versionExitCode == 0 && versionOutput.isNotEmpty()) {
-                                FFmpegDebugManager.updateFFmpegVersion(versionOutput.first())
-                            } else if (versionExitCode == 134) {
-                                // Error 134 detected during version check
-                                Log.e("NativeEncoderSimple", "FFmpeg crashed with error 134 during version check")
-                                FFmpegDebugManager.setError("FFmpeg error 134 - Signature issue detected. Trying additional fixes...")
-
-                                // Try additional fix: remove code signature requirement
-                                runCatching {
-                                    Log.d("NativeEncoderSimple", "Attempting to bypass signature requirement...")
-                                    val bypassProcess = ProcessBuilder(
-                                        "codesign",
-                                        "--remove-signature",
-                                        tempFile.absolutePath
-                                    ).start()
-                                    bypassProcess.waitFor(5, TimeUnit.SECONDS)
-
-                                    // Re-sign WITHOUT hardened runtime to avoid error 137
-                                    val resignProcess = ProcessBuilder(
-                                        "codesign",
-                                        "--force",
-                                        "--deep",
-                                        "--sign", "-",
-                                        tempFile.absolutePath
-                                    ).start()
-                                    resignProcess.waitFor(5, TimeUnit.SECONDS)
-
-                                    FFmpegDebugManager.addCommand(
-                                        "codesign --force --deep --sign - (without runtime)",
-                                        resignProcess.exitValue(),
-                                        "Attempting signature without hardened runtime"
-                                    )
-                                }
-                            } else {
-                                Log.e("NativeEncoderSimple", "FFmpeg version check failed with exit code: $versionExitCode")
-                                if (versionError.isNotEmpty()) {
-                                    Log.e("NativeEncoderSimple", "FFmpeg version error: ${versionError.joinToString("\n")}")
-                                }
-                            }
-
-                            // Get architecture info
-                            val fileProcess = ProcessBuilder("file", tempFile.absolutePath).start()
-                            val fileOutput = fileProcess.inputStream.readBytes().decodeToString()
-                            fileProcess.waitFor(2, TimeUnit.SECONDS)
-
-                            if (fileOutput.isNotBlank()) {
-                                val archInfo = fileOutput.substringAfter(":").trim()
-                                FFmpegDebugManager.updateArchitecture(archInfo)
-
-                                // Check if architecture matches system
-                                val systemArch = System.getProperty("os.arch")
-                                val isM1 = systemArch == "aarch64" || systemArch.contains("arm")
-
-                                if ((isM1 && !archInfo.contains("arm64")) || (!isM1 && archInfo.contains("arm64"))) {
-                                    Log.e("NativeEncoderSimple", "Architecture mismatch! System: $systemArch, FFmpeg: $archInfo")
-                                    FFmpegDebugManager.setError("Architecture mismatch: System is $systemArch but FFmpeg is $archInfo")
-                                }
-                            }
-                        }
-                    }
-                }
-
-                bundledFfmpegPath = tempFile
-                Log.d("NativeEncoderSimple", "Successfully extracted bundled FFmpeg to: ${tempFile.absolutePath}")
-                tempFile
-            } else {
-                Log.d("NativeEncoderSimple", "FFmpeg resource not found at: $bundledPath")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e("NativeEncoderSimple", "Could not extract bundled FFmpeg", e)
-            null
-        }
-    }
 
     fun findFfmpeg(): String {
-        // Try bundled/custom first (custom path is honored inside getBundledFfmpeg)
-        getBundledFfmpeg()?.let {
-            if (it.exists()) {
-                Log.d("NativeEncoderSimple", "Using bundled FFmpeg at: ${it.absolutePath}")
-                return it.absolutePath
-            }
-        }
-
-        // Try common system locations
-        val osName = System.getProperty("os.name").lowercase()
-        val isWindows = osName.contains("win")
-        val systemPaths = if (isWindows) listOf(
-            System.getenv("ProgramFiles") + "\\ffmpeg\\bin\\ffmpeg.exe",
-            System.getenv("ProgramFiles(x86)") + "\\ffmpeg\\bin\\ffmpeg.exe",
-            "C:\\ffmpeg\\bin\\ffmpeg.exe"
-        ) else listOf(
-            "/opt/homebrew/bin/ffmpeg",
-            "/usr/local/bin/ffmpeg",
-            "/usr/bin/ffmpeg"
-        )
-
-        for (p in systemPaths) {
-            if (File(p).exists()) {
-                Log.d("NativeEncoderSimple", "Using system FFmpeg at: $p")
-                return p
-            }
-        }
-
-        // Try PATH (which/where)
-        runCatching {
-            val cmd = if (isWindows) listOf("where", "ffmpeg") else listOf("which", "ffmpeg")
-            val proc = ProcessBuilder(cmd).start()
-            if (proc.waitFor(1, TimeUnit.SECONDS)) {
-                val out = proc.inputStream.bufferedReader().readText().lineSequence().firstOrNull()?.trim()
-                if (!out.isNullOrEmpty()) {
-                    Log.d("NativeEncoderSimple", "Using FFmpeg from PATH: $out")
-                    return out
-                }
-            }
-        }
-
-        throw RuntimeException("FFmpeg not found. No bundled resource and no system ffmpeg detected")
+        return JAVEEncoder.getFFmpegPath()
+            ?: throw RuntimeException("JAVE2 FFmpeg not available - check Gradle dependencies")
     }
 
     // Build robust input args for an image sequence from actual file names
@@ -358,42 +55,6 @@ object NativeEncoderSimple {
         return try {
             // Use bundled or system ffmpeg
             val ffmpegPath = findFfmpeg()
-            val osName = System.getProperty("os.name").lowercase()
-            val isMac = osName.contains("mac") || osName.contains("darwin")
-
-            // Create dynamic shell script on macOS to run bundled FFmpeg
-            val executableAndArgs: Pair<String, List<String>> = if (isMac && ffmpegPath.contains("gifland_ffmpeg")) {
-                try {
-                    // Create a temporary shell script that will run FFmpeg
-                    val scriptFile = File(System.getProperty("java.io.tmpdir"), "run_ffmpeg_${System.currentTimeMillis()}.sh")
-                    scriptFile.deleteOnExit()
-
-                    // Write script content
-                    scriptFile.writeText("""
-                        #!/bin/sh
-                        # Remove quarantine attribute
-                        xattr -cr "$ffmpegPath" 2>/dev/null || true
-                        # Run FFmpeg with all arguments
-                        exec "$ffmpegPath" "${"$"}@"
-                    """.trimIndent())
-
-                    // Make script executable
-                    ProcessBuilder("chmod", "+x", scriptFile.absolutePath).start().waitFor()
-
-                    Log.d("NativeEncoderSimple", "Using dynamic shell script to bypass signature issues")
-                    FFmpegDebugManager.updateVerification("🛡️ Using dynamic shell script to bypass signature checks")
-
-                    Pair(scriptFile.absolutePath, emptyList<String>())
-                } catch (e: Exception) {
-                    Log.e("NativeEncoderSimple", "Failed to create wrapper script, using FFmpeg directly", e)
-                    Pair(ffmpegPath, emptyList<String>())
-                }
-            } else {
-                Pair(ffmpegPath, emptyList<String>())
-            }
-
-            val executablePath = executableAndArgs.first
-            val ffmpegArgs = executableAndArgs.second
 
             Log.d("NativeEncoderSimple", "Using FFmpeg at: $ffmpegPath for ${frameFiles.size} frames")
 
@@ -416,8 +77,7 @@ object NativeEncoderSimple {
 
             // Build FFmpeg command
             val ffmpegCommand = mutableListOf<String>().apply {
-                add(executablePath)
-                addAll(ffmpegArgs)
+                add(ffmpegPath)
                 addAll(listOf(
                     "-y", // Overwrite output
                     "-stats", // Enable progress stats output
@@ -589,7 +249,6 @@ object NativeEncoderSimple {
                     ProcessBuilder("chmod", "+x", scriptFile.absolutePath).start().waitFor()
 
                     Log.d("NativeEncoderSimple", "Using dynamic shell script to bypass signature issues")
-                    FFmpegDebugManager.updateVerification("🛡️ Using dynamic shell script to bypass signature checks")
 
                     Pair(scriptFile.absolutePath, emptyList<String>())
                 } catch (e: Exception) {
@@ -600,8 +259,6 @@ object NativeEncoderSimple {
                 Pair(ffmpegPath, emptyList<String>())
             }
 
-            val executablePath = executableAndArgs.first
-            val ffmpegArgs = executableAndArgs.second
 
             Log.d("NativeEncoderSimple", "Using FFmpeg at: $ffmpegPath for ${frameFiles.size} frames (GIF)")
 
@@ -661,8 +318,7 @@ object NativeEncoderSimple {
 
             try {
                 val paletteCmd = mutableListOf<String>().apply {
-                    add(executablePath)
-                    addAll(ffmpegArgs)
+                    add(ffmpegPath)
                     addAll(listOf(
                         "-y",
                         // Input image sequence
@@ -694,8 +350,7 @@ object NativeEncoderSimple {
                 // Use palette for better quality
                 // Dither already derived above
                 mutableListOf<String>().apply {
-                    add(executablePath)
-                    addAll(ffmpegArgs)
+                    add(ffmpegPath)
                     addAll(listOf(
                         "-y",
                         // Input image sequence
@@ -708,8 +363,7 @@ object NativeEncoderSimple {
             } else {
                 // Direct GIF encoding without palette (works with any FFmpeg build)
                 mutableListOf<String>().apply {
-                    add(executablePath)
-                    addAll(ffmpegArgs)
+                    add(ffmpegPath)
                     addAll(listOf(
                         "-y",
                         // Input image sequence

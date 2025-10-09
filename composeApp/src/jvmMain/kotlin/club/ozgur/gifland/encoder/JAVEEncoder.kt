@@ -18,14 +18,14 @@ import javax.imageio.ImageIO
  */
 object JAVEEncoder {
 
+    @Volatile private var cachedPath: String? = null
+
     init {
         try {
-            // Get the FFmpeg path from JAVE
-            val locator = DefaultFFMPEGLocator()
-            val ffmpegPath = locator.getExecutablePath()
-            Log.d("JAVEEncoder", "JAVE2 FFmpeg path: $ffmpegPath")
-            FFmpegDebugManager.updateFFmpegVersion("Using JAVE2 FFmpeg: $ffmpegPath")
-            FFmpegDebugManager.updateVerification("✅ Using JAVE2 signed FFmpeg - no signature issues!")
+            // Warm up locator and cache path (best-effort)
+            runCatching { getFFmpegPath() }.onFailure { e ->
+                Log.d("JAVEEncoder", "JAVE2 init could not resolve FFmpeg yet: ${e.message}")
+            }
         } catch (e: Exception) {
             Log.e("JAVEEncoder", "Failed to initialize JAVE2", e)
         }
@@ -34,27 +34,50 @@ object JAVEEncoder {
     /**
      * Check if JAVE2 is available
      */
-    fun isAvailable(): Boolean {
-        return try {
-            val locator = DefaultFFMPEGLocator()
-            val path = locator.getExecutablePath()
-            path.isNotEmpty()
-        } catch (e: Exception) {
-            Log.e("JAVEEncoder", "JAVE2 not available", e)
-            false
-        }
+    fun isAvailable(): Boolean = try {
+        getFFmpegPath() != null
+    } catch (_: Exception) {
+        false
     }
 
     /**
-     * Get the FFmpeg executable path from JAVE2
+     * Resolve the FFmpeg executable path provided by JAVE2.
+     * - Caches the path after first successful lookup
+     * - Validates the path points to an existing, executable file
+     * - Throws on failure with clear guidance to check Gradle dependencies
      */
     fun getFFmpegPath(): String? {
-        return try {
-            val locator = DefaultFFMPEGLocator()
-            locator.getExecutablePath()
-        } catch (e: Exception) {
-            Log.e("JAVEEncoder", "Failed to get FFmpeg path from JAVE2", e)
-            null
+        synchronized(this) {
+            cachedPath?.let { existing ->
+                val f = File(existing)
+                if (f.isFile && f.canExecute()) return existing
+                // If cache is stale, clear and re-resolve
+                cachedPath = null
+            }
+
+            try {
+                val locator = DefaultFFMPEGLocator()
+                val path = locator.getExecutablePath()
+                val f = File(path)
+                if (!f.exists() || !f.isFile) {
+                    throw IllegalStateException("JAVE2 FFmpeg path is invalid: '$path' (not a file)")
+                }
+                if (!f.canExecute()) {
+                    throw IllegalStateException("JAVE2 FFmpeg at '$path' is not executable")
+                }
+
+                cachedPath = path
+                // Best-effort diagnostics
+                FFmpegDebugManager.updateFFmpegVersion("Using JAVE2 FFmpeg: $path")
+                FFmpegDebugManager.updateArchitecture(System.getProperty("os.arch"))
+                Log.d("JAVEEncoder", "JAVE2 FFmpeg path: $path")
+                return path
+            } catch (e: Exception) {
+                val msg = "JAVE2 FFmpeg not available. Ensure Gradle includes: ws.schild:jave-core:3.5.0 and the correct ws.schild:jave-nativebin-* package for this platform."
+                Log.e("JAVEEncoder", msg, e)
+                FFmpegDebugManager.setError(msg + " (" + (e.message ?: "unknown error") + ")")
+                throw IllegalStateException(msg, e)
+            }
         }
     }
 }

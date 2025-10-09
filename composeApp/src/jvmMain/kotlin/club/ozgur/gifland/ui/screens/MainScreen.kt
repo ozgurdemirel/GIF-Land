@@ -3,19 +3,13 @@ package club.ozgur.gifland.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -38,7 +32,6 @@ import club.ozgur.gifland.ui.components.CaptureArea
 import club.ozgur.gifland.util.openFileLocation
 import club.ozgur.gifland.encoder.FFmpegDebugManager
 import kotlinx.coroutines.launch
-import java.io.File
 
 object MainScreen : Screen {
 
@@ -459,7 +452,7 @@ object MainScreen : Screen {
 
                         // FFmpeg Debug Info Panel (Development)
                         val debugInfo = FFmpegDebugManager.debugInfo
-                        if (debugInfo.extractionPath != null || debugInfo.lastError != null) {
+                        if (debugInfo.ffmpegVersion != null || debugInfo.architecture != null || debugInfo.lastError != null) {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
@@ -480,33 +473,9 @@ object MainScreen : Screen {
                                         color = Color(0xFF424242)
                                     )
 
-                                    Divider(color = Color(0xFFE0E0E0))
+                                    HorizontalDivider(color = Color(0xFFE0E0E0))
 
-                                    // Extraction Path
-                                    if (debugInfo.extractionPath != null) {
-                                        Row(modifier = Modifier.fillMaxWidth()) {
-                                            Text("📁 Path: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                            Text(
-                                                debugInfo.extractionPath.substringAfterLast("/"),
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF616161),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
 
-                                    // File Size
-                                    if (debugInfo.fileSize > 0) {
-                                        Row {
-                                            Text("📊 Size: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                            Text(
-                                                "${debugInfo.fileSize / (1024 * 1024)} MB",
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF616161)
-                                            )
-                                        }
-                                    }
 
                                     // FFmpeg Version
                                     if (debugInfo.ffmpegVersion != null) {
@@ -536,68 +505,7 @@ object MainScreen : Screen {
                                         }
                                     }
 
-                                    // Signing Commands
-                                    if (debugInfo.signingCommands.isNotEmpty()) {
-                                        Text(
-                                            "🔐 Signing Process:",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = Color(0xFF424242)
-                                        )
 
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(
-                                                    Color(0xFF263238),
-                                                    RoundedCornerShape(4.dp)
-                                                )
-                                                .padding(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            debugInfo.signingCommands.forEach { cmd ->
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    verticalAlignment = Alignment.Top
-                                                ) {
-                                                    Text(
-                                                        if (cmd.success) "✅" else "❌",
-                                                        fontSize = 10.sp
-                                                    )
-                                                    Spacer(Modifier.width(4.dp))
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text(
-                                                            cmd.command,
-                                                            fontSize = 10.sp,
-                                                            color = Color(0xFF76D275),
-                                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                                        )
-                                                        if (cmd.output.isNotBlank()) {
-                                                            Text(
-                                                                cmd.output.take(100),
-                                                                fontSize = 9.sp,
-                                                                color = Color(0xFFCFD8DC),
-                                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Verification Result
-                                    if (debugInfo.verificationResult != null) {
-                                        Row {
-                                            Text("🔍 Verification: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                            Text(
-                                                debugInfo.verificationResult,
-                                                fontSize = 11.sp,
-                                                color = if (debugInfo.verificationResult.contains("✅"))
-                                                    Color(0xFF4CAF50) else Color(0xFFFF9800)
-                                            )
-                                        }
-                                    }
 
                                     // Last Error
                                     if (debugInfo.lastError != null) {
@@ -619,14 +527,6 @@ object MainScreen : Screen {
                                         }
                                     }
 
-                                    // Extraction Time
-                                    if (debugInfo.extractionTime != null) {
-                                        Text(
-                                            "⏱️ Extracted at: ${debugInfo.extractionTime}",
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF9E9E9E)
-                                        )
-                                    }
                                 }
                             }
                         }
