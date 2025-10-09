@@ -1,16 +1,23 @@
 package club.ozgur.gifland
 
 // ===== IMPORT'LAR - GEREKLI KÜTÜPHANELER =====
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.WindowState
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
 import club.ozgur.gifland.core.Recorder
-import club.ozgur.gifland.ui.screens.MainScreen
+import club.ozgur.gifland.domain.model.AppState
+import club.ozgur.gifland.domain.model.AppSettings
+import club.ozgur.gifland.domain.repository.StateRepository
+import club.ozgur.gifland.presentation.components.QuickAccessPanel
+import club.ozgur.gifland.presentation.components.ContextualActionMenu
+import club.ozgur.gifland.ui.screens.MainScreenCompact
+import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 
 // ===== COMPOSITION LOCAL'LER - GLOBAL STATE PAYLAŞIMI =====
 /**
@@ -44,7 +51,24 @@ val LocalWindowState = compositionLocalOf<WindowState> {
  */
 @Composable
 fun App(windowState: WindowState) {
-    // ===== 1. RECORDER OLUŞTURMA =====
+    // ===== 1. DI ile StateRepository'yi al =====
+    val stateRepository = koinInject<StateRepository>()
+    val scope = rememberCoroutineScope()
+
+    // ===== 2. App state'i dinle =====
+    val appState by stateRepository.state.collectAsState()
+
+    // ===== 3. İlk yüklemede state'i initialize et =====
+    LaunchedEffect(Unit) {
+        if (appState is AppState.Initializing) {
+            stateRepository.initialize(
+                settings = AppSettings(),
+                recentRecordings = emptyList()
+            )
+        }
+    }
+
+    // ===== 4. RECORDER OLUŞTURMA (Geçici - sonra service'e taşınacak) =====
     /**
      * remember { } kullanımı:
      * - Recomposition'lar arasında değeri korur
@@ -57,40 +81,61 @@ fun App(windowState: WindowState) {
      */
     val recorder = remember { Recorder() }
 
-    // ===== 4. UI AĞACI OLUŞTURMA =====
+    // ===== 5. UI AĞACI OLUŞTURMA =====
     /**
      * MaterialTheme: Material Design 3 tema sistemini uygular
      * Tüm alt componentler otomatik olarak tema renklerini/stillerini alır
      */
     MaterialTheme {
-        /**
-         * CompositionLocalProvider: LocalRecorder ve LocalWindowState'e değer sağlar
-         *
-         * "provides" infix fonksiyonu kullanımı:
-         * LocalRecorder provides recorder -> LocalRecorder'a recorder değerini atar
-         *
-         * Bu sayede alt componentlerde şöyle kullanabiliriz:
-         * val myRecorder = LocalRecorder.current
-         * val myWindowState = LocalWindowState.current
-         */
-        CompositionLocalProvider(
-            LocalRecorder provides recorder,
-            LocalWindowState provides windowState
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             /**
-             * Navigator: Voyager kütüphanesi navigasyon sistemi
-             * - MainScreen: Başlangıç ekranı
-             * - navigator parametresi: Ekranlar arası geçiş için kullanılır
+             * CompositionLocalProvider: LocalRecorder ve LocalWindowState'e değer sağlar
              *
-             * SlideTransition: Ekranlar arası kaydırma animasyonu sağlar
+             * "provides" infix fonksiyonu kullanımı:
+             * LocalRecorder provides recorder -> LocalRecorder'a recorder değerini atar
              *
-             * Örnek kullanım (başka bir ekranda):
-             * navigator.push(SettingsScreen())  // Yeni ekrana git
-             * navigator.pop()                   // Önceki ekrana dön
+             * Bu sayede alt componentlerde şöyle kullanabiliriz:
+             * val myRecorder = LocalRecorder.current
+             * val myWindowState = LocalWindowState.current
              */
-            Navigator(MainScreen) { navigator ->
-                SlideTransition(navigator)
+            CompositionLocalProvider(
+                LocalRecorder provides recorder,
+                LocalWindowState provides windowState
+            ) {
+                /**
+                 * Navigator: Voyager kütüphanesi navigasyon sistemi
+                 * - MainScreen: Başlangıç ekranı
+                 * - navigator parametresi: Ekranlar arası geçiş için kullanılır
+                 *
+                 * SlideTransition: Ekranlar arası kaydırma animasyonu sağlar
+                 *
+                 * Örnek kullanım (başka bir ekranda):
+                 * navigator.push(SettingsScreen())  // Yeni ekrana git
+                 * navigator.pop()                   // Önceki ekrana dön
+                 */
+                Navigator(MainScreenCompact) { navigator ->
+                    SlideTransition(navigator)
+                }
             }
+
+            // ===== 6. OVERLAY COMPONENTS =====
+            // Quick Access Panel - shows when toggled
+            val currentState = appState
+            val showQuickPanel = currentState is AppState.Idle && currentState.isQuickPanelVisible
+            QuickAccessPanel(
+                visible = showQuickPanel,
+                onDismiss = {
+                    scope.launch {
+                        stateRepository.toggleQuickPanel()
+                    }
+                }
+            )
+
+            // Contextual Action Menu - shows during recording
+            val showRecordingMenu = appState is AppState.Recording
+            ContextualActionMenu(
+                visible = showRecordingMenu
+            )
         }
     }
 }

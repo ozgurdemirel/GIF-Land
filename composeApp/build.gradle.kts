@@ -39,6 +39,15 @@ kotlin {
             implementation("cafe.adriel.voyager:voyager-navigator:$voyagerVersion")
             implementation("cafe.adriel.voyager:voyager-transitions:$voyagerVersion")
             implementation("cafe.adriel.voyager:voyager-tab-navigator:$voyagerVersion")
+
+            // Dependency Injection
+            val koinVersion = "3.5.0"
+            implementation("io.insert-koin:koin-core:$koinVersion")
+            implementation("io.insert-koin:koin-compose:1.1.0")
+
+            // Settings Persistence
+            implementation("com.russhwolf:multiplatform-settings:1.1.1")
+            implementation("com.russhwolf:multiplatform-settings-coroutines:1.1.1")
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

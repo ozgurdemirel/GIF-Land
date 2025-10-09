@@ -413,19 +413,12 @@ object MainScreen : Screen {
                             }
                         }
 
-                        // Quality Settings
+                        // Settings - now opens integrated settings screen
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    navigator.push(QualitySettingsScreen(
-                                        settings = recorder.settings,
-                                        onSettingsChange = { newSettings ->
-                                            recorder.settings = newSettings
-                                            format = newSettings.format
-                                            maxDuration = newSettings.maxDuration
-                                        }
-                                    ))
+                                    navigator.push(IntegratedSettingsScreen)
                                 },
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -440,7 +433,7 @@ object MainScreen : Screen {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("⚙", fontSize = 18.sp, color = Color(0xFF667EEA))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Quality", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                    Text("Settings", fontWeight = FontWeight.Medium, fontSize = 14.sp)
                                 }
                                 Text(
                                     "FPS: ${recorder.settings.fps} • Q: ${recorder.settings.quality}",
