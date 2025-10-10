@@ -7,11 +7,15 @@ import androidx.compose.ui.window.*
 import club.ozgur.gifland.di.appModule
 import club.ozgur.gifland.di.platformModule
 import club.ozgur.gifland.domain.repository.StateRepository
+import club.ozgur.gifland.domain.repository.SettingsRepository
+import club.ozgur.gifland.domain.model.AppSettings
 import club.ozgur.gifland.domain.service.RecordingService
 import club.ozgur.gifland.platform.GlobalHotkeyManager
 import club.ozgur.gifland.platform.SystemTray
 import club.ozgur.gifland.ui.components.AreaSelector
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import org.koin.core.context.GlobalContext.startKoin
 import org.koin.core.context.GlobalContext.get
 
@@ -24,12 +28,44 @@ fun main() = application {
     }
 
     // Get dependencies
+    val settingsRepository = remember { koinApp.koin.get<SettingsRepository>() }
+    val appSettingsState = settingsRepository.settingsFlow.collectAsState(initial = settingsRepository.getCurrentSettings())
+    val appSettings = appSettingsState.value
+
     val stateRepository = remember { koinApp.koin.get<StateRepository>() }
     val recordingService = remember { koinApp.koin.get<RecordingService>() }
     val scope = rememberCoroutineScope()
 
     // Window visibility state for minimize to tray
     var isWindowVisible by remember { mutableStateOf(true) }
+    // Countdown state for tray-based delayed recording
+    var countdownSeconds by remember { mutableStateOf<Int?>(null) }
+    var countdownJob by remember { mutableStateOf<Job?>(null) }
+
+    fun startCountdownRecording(seconds: Int = appSettings.countdownDuration) {
+        countdownJob?.cancel()
+        // If countdown disabled or 0, start immediately
+        if (seconds <= 0) {
+            scope.launch { recordingService.startRecording(null) }
+            return
+        }
+        countdownJob = scope.launch {
+            for (i in seconds downTo 1) {
+                countdownSeconds = i
+                delay(1000)
+            }
+            countdownSeconds = null
+            // Start recording silently without showing the main window
+            recordingService.startRecording(null)
+        }
+    }
+
+    fun cancelCountdown() {
+        countdownJob?.cancel()
+        countdownJob = null
+        countdownSeconds = null
+    }
+
     var shouldExit by remember { mutableStateOf(false) }
 
     // Initialize global hotkey manager
@@ -102,10 +138,18 @@ fun main() = application {
         )
 
         hotkeyManager.registerHotkeys(hotkeys, callbacks)
-
         onDispose {
             hotkeyManager.dispose()
         }
+    }
+
+    // Tray tooltip feedback based on countdown and recording state
+    val appState by stateRepository.state.collectAsState()
+    fun formatTime(s: Int): String = "%02d:%02d".format(s / 60, s % 60)
+    val trayTooltip = when (val st = appState) {
+        is club.ozgur.gifland.domain.model.AppState.Recording ->
+            "Recording... ${formatTime(st.session.duration)} / ${formatTime(st.session.maxDuration)}"
+        else -> countdownSeconds?.let { "Recording starts in ${it}s..." } ?: "GIF/WebP/MP4 Recorder"
     }
 
     val windowState = rememberWindowState(
@@ -117,12 +161,12 @@ fun main() = application {
     // System tray support
     if (!shouldExit) {
         SystemTray(
-            tooltip = "GIF/WebP/MP4 Recorder",
+            tooltip = trayTooltip,
+            isRecording = appState is club.ozgur.gifland.domain.model.AppState.Recording,
             onQuickCapture = {
                 scope.launch {
-                    // Start full screen recording immediately
-                    isWindowVisible = true // Show window to see recording UI
-                    recordingService.startRecording(null) // null means full screen
+                    // Immediate recording (no delay) - keep window hidden
+                    recordingService.startRecording(null)
                 }
             },
             onSelectArea = {
@@ -130,9 +174,8 @@ fun main() = application {
                 val selector = AreaSelector { area ->
                     if (area != null) {
                         scope.launch {
-                            // Only show window AFTER area is selected
+                            // Start recording silently after area is selected
                             recordingService.startRecording(area)
-                            isWindowVisible = true // Show window after recording starts
                         }
                     }
                 }
@@ -155,6 +198,16 @@ fun main() = application {
             onExit = {
                 shouldExit = true
                 exitApplication()
+            },
+            countdownSeconds = countdownSeconds,
+            defaultDelaySeconds = if (appSettings.showCountdown) appSettings.countdownDuration else 0,
+            onStartCountdown = { startCountdownRecording(it) },
+            onCancelCountdown = { cancelCountdown() },
+            onQuickRecordNoDelay = {
+                scope.launch {
+                    // Keep window hidden during quick record from tray
+                    recordingService.startRecording(null)
+                }
             }
         )
     }
@@ -169,9 +222,16 @@ fun main() = application {
             title = "GIF/WebP/MP4 Recorder",
             state = windowState,
             resizable = false,
-            visible = isWindowVisible
+            visible = isWindowVisible,
+            transparent = true,
+            undecorated = true
         ) {
-            App(windowState)
+            App(
+                windowState,
+                onMinimizeToTray = { isWindowVisible = false },
+                onHideMainWindow = { isWindowVisible = false },
+                onShowMainWindow = { isWindowVisible = true }
+            )
         }
     }
 }

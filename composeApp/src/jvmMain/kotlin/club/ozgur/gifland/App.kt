@@ -8,7 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.WindowState
 import cafe.adriel.voyager.navigator.Navigator
-import cafe.adriel.voyager.transitions.SlideTransition
+import cafe.adriel.voyager.transitions.FadeTransition
 import club.ozgur.gifland.core.Recorder
 import club.ozgur.gifland.domain.model.AppState
 import club.ozgur.gifland.domain.model.AppSettings
@@ -43,14 +43,33 @@ val LocalWindowState = compositionLocalOf<WindowState> {
     error("No WindowState provided")
 }
 
+val LocalComposeWindow = compositionLocalOf<java.awt.Window?> { null }
+
+/**
+ * Window control callbacks
+ */
+data class WindowControl(
+    val onMinimizeToTray: () -> Unit = {},
+    val hideMainWindow: () -> Unit = {},
+    val showMainWindow: () -> Unit = {}
+)
+
+val LocalWindowControl = compositionLocalOf { WindowControl() }
+
 /**
  * Ana uygulama composable fonksiyonu
  * @param windowState: Pencere durumu (boyut, konum vb.) bilgilerini tutar
+ * @param onMinimizeToTray: Callback to minimize window to system tray
  *
  * @Composable anotasyonu: Bu fonksiyonun UI oluşturduğunu belirtir
  */
 @Composable
-fun App(windowState: WindowState) {
+fun App(
+    windowState: WindowState,
+    onMinimizeToTray: () -> Unit = {},
+    onHideMainWindow: () -> Unit = {},
+    onShowMainWindow: () -> Unit = {}
+) {
     // ===== 1. DI ile StateRepository'yi al =====
     val stateRepository = koinInject<StateRepository>()
     val scope = rememberCoroutineScope()
@@ -81,61 +100,46 @@ fun App(windowState: WindowState) {
      */
     val recorder = remember { Recorder() }
 
+    // Get the current window reference
+    val currentWindow = remember {
+        java.awt.Window.getWindows().firstOrNull()
+    }
+
     // ===== 5. UI AĞACI OLUŞTURMA =====
     /**
      * MaterialTheme: Material Design 3 tema sistemini uygular
      * Tüm alt componentler otomatik olarak tema renklerini/stillerini alır
      */
-    MaterialTheme {
+    club.ozgur.gifland.ui.theme.ThemeProvider {
         Box(modifier = Modifier.fillMaxSize()) {
-            /**
-             * CompositionLocalProvider: LocalRecorder ve LocalWindowState'e değer sağlar
-             *
-             * "provides" infix fonksiyonu kullanımı:
-             * LocalRecorder provides recorder -> LocalRecorder'a recorder değerini atar
-             *
-             * Bu sayede alt componentlerde şöyle kullanabiliriz:
-             * val myRecorder = LocalRecorder.current
-             * val myWindowState = LocalWindowState.current
-             */
+            // CompositionLocal providers
             CompositionLocalProvider(
                 LocalRecorder provides recorder,
-                LocalWindowState provides windowState
+                LocalWindowState provides windowState,
+                LocalComposeWindow provides currentWindow,
+                LocalWindowControl provides WindowControl(
+                    onMinimizeToTray = onMinimizeToTray,
+                    hideMainWindow = onHideMainWindow,
+                    showMainWindow = onShowMainWindow
+                )
             ) {
-                /**
-                 * Navigator: Voyager kütüphanesi navigasyon sistemi
-                 * - MainScreen: Başlangıç ekranı
-                 * - navigator parametresi: Ekranlar arası geçiş için kullanılır
-                 *
-                 * SlideTransition: Ekranlar arası kaydırma animasyonu sağlar
-                 *
-                 * Örnek kullanım (başka bir ekranda):
-                 * navigator.push(SettingsScreen())  // Yeni ekrana git
-                 * navigator.pop()                   // Önceki ekrana dön
-                 */
                 Navigator(MainScreenCompact) { navigator ->
-                    SlideTransition(navigator)
+                    FadeTransition(navigator)
                 }
             }
 
             // ===== 6. OVERLAY COMPONENTS =====
-            // Quick Access Panel - shows when toggled
             val currentState = appState
             val showQuickPanel = currentState is AppState.Idle && currentState.isQuickPanelVisible
             QuickAccessPanel(
                 visible = showQuickPanel,
                 onDismiss = {
-                    scope.launch {
-                        stateRepository.toggleQuickPanel()
-                    }
+                    scope.launch { stateRepository.toggleQuickPanel() }
                 }
             )
 
-            // Contextual Action Menu - shows during recording
             val showRecordingMenu = appState is AppState.Recording
-            ContextualActionMenu(
-                visible = showRecordingMenu
-            )
+            ContextualActionMenu(visible = showRecordingMenu)
         }
     }
 }
@@ -166,3 +170,4 @@ fun App(windowState: WindowState) {
  *    WindowResizeEffect kayıt sırasında pencereyi otomatik küçültür/büyütür
  *    Bu UX için önemli - kullanıcı kayıt yaparken pencere engel olmasın!
  */
+

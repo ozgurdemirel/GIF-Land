@@ -62,7 +62,7 @@ object RecordingScreen : Screen {
 
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(0xFFF8FAFC)
+            color = MaterialTheme.colorScheme.background
         ) {
             Column(
                 modifier = Modifier
@@ -149,9 +149,9 @@ object RecordingScreen : Screen {
                         .fillMaxWidth()
                         .weight(1f),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFFF7043).copy(alpha = 0.1f)
+                        containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.1f)
                     ),
-                    border = BorderStroke(2.dp, Color(0xFFFF7043))
+                    border = BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary)
                 ) {
                     Column(
                         modifier = Modifier
@@ -165,7 +165,7 @@ object RecordingScreen : Screen {
                             text = "${recordingState.frameCount}",
                             fontSize = 48.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFF7043)
+                            color = MaterialTheme.colorScheme.tertiary
                         )
                         Text(
                             text = "frames captured",
@@ -231,14 +231,14 @@ object RecordingScreen : Screen {
                         if (recordingState.duration > recorder.settings.maxDuration * 0.8) {
                             Card(
                                 colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFFFFC107).copy(alpha = 0.1f)
+                                    containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.1f)
                                 ),
-                                border = BorderStroke(1.dp, Color(0xFFFFC107))
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary)
                             ) {
                                 Text(
                                     text = "⚠️ Recording will stop soon!",
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    color = Color(0xFFF57C00),
+                                    color = MaterialTheme.colorScheme.tertiary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -263,7 +263,7 @@ object RecordingScreen : Screen {
                             .height(56.dp)
                             .weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFFC107)
+                            containerColor = MaterialTheme.colorScheme.tertiary
                         ),
                         shape = RoundedCornerShape(28.dp)
                     ) {
@@ -307,7 +307,7 @@ object RecordingScreen : Screen {
                             .height(56.dp)
                             .weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFF5252)
+                            containerColor = MaterialTheme.colorScheme.error
                         ),
                         shape = RoundedCornerShape(28.dp)
                     ) {

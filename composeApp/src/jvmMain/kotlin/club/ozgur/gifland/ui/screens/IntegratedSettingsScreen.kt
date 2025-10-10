@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import club.ozgur.gifland.LocalWindowState
 import club.ozgur.gifland.core.RecorderSettings
 import club.ozgur.gifland.core.OutputFormat as CoreOutputFormat
 import club.ozgur.gifland.domain.model.OutputFormat
@@ -26,6 +27,8 @@ import club.ozgur.gifland.domain.model.AppSettings
 import club.ozgur.gifland.presentation.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
+
+import club.ozgur.gifland.ui.components.DraggableWindowTitleBar
 
 /**
  * Integrated settings screen that connects QualitySettingsScreen with the new architecture.
@@ -37,11 +40,22 @@ data object IntegratedSettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
+        val windowState = LocalWindowState.current
         val koin = getKoin()
         val settingsViewModel = remember { koin.get<SettingsViewModel>() }
         val scope = rememberCoroutineScope()
 
         val settings by settingsViewModel.settings.collectAsState()
+
+        // Remember original window size
+        val originalSize = remember {
+            androidx.compose.ui.unit.DpSize(windowState.size.width, windowState.size.height)
+        }
+
+        // Resize window when screen opens
+        LaunchedEffect(Unit) {
+            windowState.size = androidx.compose.ui.unit.DpSize(800.dp, 600.dp)
+        }
 
         // Convert AppSettings to RecorderSettings for the existing UI
         val recorderSettings = remember(settings) {
@@ -67,46 +81,38 @@ data object IntegratedSettingsScreen : Screen {
         // Tab selection
         var selectedTab by remember { mutableStateOf(SettingsTab.General) }
 
-        Scaffold(
-            topBar = {
-                CenterAlignedTopAppBar(
-                    title = { Text("Settings") },
-                    navigationIcon = {
-                        IconButton(onClick = {
-                            // Apply settings when navigating back
-                            scope.launch {
-                                settingsViewModel.updateCaptureSettings(
-                                    fps = currentFps,
-                                    quality = currentQuality,
-                                    format = currentFormat
-                                )
-                                settingsViewModel.toggleCountdown(showCountdown)
-                                settingsViewModel.updateCountdownDuration(countdownDuration)
-                                settingsViewModel.toggleMouseCursor(captureMouseCursor)
-                                settingsViewModel.applySettings()
-                            }
-                            navigator.pop()
-                        }) {
-                            Text("←", fontSize = 24.sp)
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color(0xFF3A7BD5),
-                        titleContentColor = Color.White,
-                        navigationIconContentColor = Color.White
-                    )
-                )
-            }
-        ) { paddingValues ->
+        Scaffold { paddingValues ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
+                DraggableWindowTitleBar(
+                    title = "Settings",
+                    onClose = {
+                        // Restore original window size
+                        windowState.size = originalSize
+                        // Apply settings when closing
+                        scope.launch {
+                            settingsViewModel.updateCaptureSettings(
+                                fps = currentFps,
+                                quality = currentQuality,
+                                format = currentFormat
+                            )
+                            settingsViewModel.toggleCountdown(showCountdown)
+                            settingsViewModel.updateCountdownDuration(countdownDuration)
+                            settingsViewModel.toggleMouseCursor(captureMouseCursor)
+                            settingsViewModel.applySettings()
+                        }
+                        navigator.pop()
+                    }
+                )
+                Spacer(Modifier.height(8.dp))
+
                 // Tab Row
                 TabRow(
                     selectedTabIndex = selectedTab.ordinal,
-                    containerColor = Color(0xFFF5F5F5)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     SettingsTab.entries.forEach { tab ->
                         Tab(
@@ -133,6 +139,7 @@ data object IntegratedSettingsScreen : Screen {
                         showCountdown = showCountdown,
                         countdownDuration = countdownDuration,
                         captureMouseCursor = captureMouseCursor,
+
                         onFpsChange = { currentFps = it },
                         onQualityChange = { currentQuality = it },
                         onFormatChange = { currentFormat = it },
@@ -189,6 +196,8 @@ data object IntegratedSettingsScreen : Screen {
 
                     Button(
                         onClick = {
+                            // Restore original window size
+                            windowState.size = originalSize
                             // Apply all pending changes
                             scope.launch {
                                 settingsViewModel.updateCaptureSettings(
@@ -204,7 +213,7 @@ data object IntegratedSettingsScreen : Screen {
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C7ED6))
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Text("Save Settings")
                     }
@@ -253,7 +262,7 @@ private fun GeneralSettingsContent(
             // System Integration
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("System Integration", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -268,7 +277,7 @@ private fun GeneralSettingsContent(
                         }
                     )
 
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     SwitchPreference(
                         title = "Show in System Tray",
@@ -279,7 +288,7 @@ private fun GeneralSettingsContent(
                         }
                     )
 
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     SwitchPreference(
                         title = "Minimize to Tray",
@@ -295,7 +304,7 @@ private fun GeneralSettingsContent(
             // Theme
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Appearance", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -378,7 +387,7 @@ private fun CaptureSettingsContent(
             // Format Selection
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F6FF))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Output Format", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -407,7 +416,7 @@ private fun CaptureSettingsContent(
             // FPS Settings
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F6FF))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -439,7 +448,7 @@ private fun CaptureSettingsContent(
             // Quality Settings
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F6FF))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -471,7 +480,7 @@ private fun CaptureSettingsContent(
             // Recording Options
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Recording Options", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -484,7 +493,7 @@ private fun CaptureSettingsContent(
                         onCheckedChange = onFastGifChange
                     )
 
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     SwitchPreference(
                         title = "Show Countdown",
@@ -513,7 +522,7 @@ private fun CaptureSettingsContent(
                         }
                     }
 
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     SwitchPreference(
                         title = "Capture Mouse Cursor",
@@ -527,7 +536,7 @@ private fun CaptureSettingsContent(
             // Quick Presets
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Quick Presets", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -606,7 +615,7 @@ private fun ExportSettingsContent(
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Export Settings", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -623,7 +632,7 @@ private fun ExportSettingsContent(
                         }
                     )
 
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     SwitchPreference(
                         title = "Auto Optimize",
@@ -634,7 +643,7 @@ private fun ExportSettingsContent(
                         }
                     )
 
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     SwitchPreference(
                         title = "Generate Thumbnails",
@@ -649,7 +658,7 @@ private fun ExportSettingsContent(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("File Management", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -703,7 +712,7 @@ private fun ShortcutsSettingsContent(
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Global Hotkeys", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -720,7 +729,7 @@ private fun ShortcutsSettingsContent(
                             Text(action.name, fontSize = 14.sp)
                             Text(key, fontSize = 14.sp, color = Color(0xFF2196F3))
                         }
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             }
@@ -754,7 +763,7 @@ private fun IntegrationsSettingsContent(
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Cloud Sync", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -785,7 +794,7 @@ private fun IntegrationsSettingsContent(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Share Targets", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -847,7 +856,7 @@ private fun AdvancedSettingsContent(
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Performance", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -862,7 +871,7 @@ private fun AdvancedSettingsContent(
                         }
                     )
 
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -877,7 +886,7 @@ private fun AdvancedSettingsContent(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Developer", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -919,7 +928,7 @@ private fun SwitchPreference(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Text(description, fontSize = 12.sp, color = Color(0xFF7B8794))
+            Text(description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(
             checked = checked,

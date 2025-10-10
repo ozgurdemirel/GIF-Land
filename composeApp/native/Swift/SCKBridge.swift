@@ -245,12 +245,7 @@ public func sck_start_display_capture(
         fputs("[SCKBridge] addStreamOutput error: \(error.localizedDescription)\n", stderr)
         return -3
     }
-    do {
-        try stream.startCapture()
-    } catch {
-        fputs("[SCKBridge] startCapture error: \(error.localizedDescription)\n", stderr)
-        return -3
-    }
+    stream.startCapture()
     gFilter = filter; gStream = stream; gOutput = output; gQueue = q; gDelegate = delegate; gFrameCount = 0; gCbQueue = cbq
     fputs("[SCKBridge] Started stream on displayId=\(displayId) fps=\(fps) size=\(target.width)x\(target.height)\n", stderr)
     return 0

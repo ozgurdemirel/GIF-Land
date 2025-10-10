@@ -168,12 +168,13 @@ class SystemTrayManager(
             RenderingHints.VALUE_ANTIALIAS_ON
         )
 
-        // Draw a simple recording icon
+        // Draw a simple recording icon that adapts to theme
+        val dark = try { club.ozgur.gifland.ui.theme.ThemeManager.isDark } catch (_: Exception) { false }
         g2d.color = Color(255, 67, 67) // Red color
         g2d.fillOval(2, 2, size - 4, size - 4)
 
-        // Add a white center dot
-        g2d.color = Color.WHITE
+        // Add a center dot with contrasting color depending on theme
+        g2d.color = if (dark) Color(0xFFEEEEEE.toInt()) else Color.WHITE
         g2d.fillOval(6, 6, size - 12, size - 12)
 
         g2d.dispose()
@@ -292,18 +293,58 @@ class SystemTrayManager(
 @Composable
 fun ApplicationScope.SystemTray(
     icon: Painter = painterResource("icons/tray-icon.png"),
-    tooltip: String = "GIF/WebP Recorder",
+    iconRecording: Painter? = null,
+    isRecording: Boolean = false,
+    tooltip: String = "GIF/WebP/MP4 Recorder",
     onQuickCapture: () -> Unit = {},
     onSelectArea: () -> Unit = {},
     onShowQuickPanel: () -> Unit = {},
     onShowMainWindow: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
-    onExit: () -> Unit = {}
+    onExit: () -> Unit = {},
+    countdownSeconds: Int? = null,
+    defaultDelaySeconds: Int = 3,
+    onStartCountdown: (Int) -> Unit = {},
+    onCancelCountdown: () -> Unit = {},
+    onQuickRecordNoDelay: () -> Unit = onQuickCapture
 ) {
+    // Simple blink effect when recording and a recording icon is provided
+    var blink = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(isRecording) {
+        blink.value = false
+        if (isRecording && iconRecording != null) {
+            while (isRecording) {
+                blink.value = !blink.value
+                kotlinx.coroutines.delay(400)
+            }
+            blink.value = false
+        }
+    }
+
+    // Create a painter that overlays a blinking red recording dot on the base icon
+    fun overlayRecordingPainter(base: Painter, showDot: Boolean): Painter {
+        if (!showDot) return base
+        return object : Painter() {
+            override val intrinsicSize = base.intrinsicSize
+            override fun androidx.compose.ui.graphics.drawscope.DrawScope.onDraw() {
+                with(base) { draw(size) }
+                val r = (size.minDimension * 0.18f).coerceAtLeast(1f)
+                val pad = size.minDimension * 0.10f
+                val center = androidx.compose.ui.geometry.Offset(size.width - r - pad, size.height - r - pad)
+                // White ring for contrast
+                drawCircle(color = androidx.compose.ui.graphics.Color.White, radius = r * 1.4f, center = center)
+                // Red dot
+                drawCircle(color = androidx.compose.ui.graphics.Color(0xFFFF3B30), radius = r, center = center)
+            }
+        }
+    }
+
+    val currentIcon = overlayRecordingPainter(icon, isRecording && blink.value)
+
     val trayState = rememberTrayState()
 
     Tray(
-        icon = icon,
+        icon = currentIcon,
         state = trayState,
         tooltip = tooltip,
         onAction = {
@@ -311,9 +352,15 @@ fun ApplicationScope.SystemTray(
             onShowQuickPanel()
         },
         menu = {
+            // Countdown-aware toggle item
             Item(
-                "Quick Capture",
-                onClick = onQuickCapture
+                if (countdownSeconds != null) "Cancel countdown (${countdownSeconds}s)" else "Start Recording (${defaultDelaySeconds}s delay)",
+                onClick = { if (countdownSeconds != null) onCancelCountdown() else onStartCountdown(defaultDelaySeconds) }
+            )
+            // Immediate recording option
+            Item(
+                "Quick Record (No delay)",
+                onClick = onQuickRecordNoDelay
             )
             Item(
                 "Select Area...",

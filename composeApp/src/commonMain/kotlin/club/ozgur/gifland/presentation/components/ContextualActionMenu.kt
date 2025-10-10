@@ -124,7 +124,7 @@ private fun ContextualMenuContent(
                     .offset(y = 4.dp)
                     .blur(20.dp)
                     .background(
-                        Color(0xFFFF5252).copy(alpha = glowAlpha * 0.3f),
+                        MaterialTheme.colorScheme.error.copy(alpha = glowAlpha * 0.3f),
                         RoundedCornerShape(20.dp)
                     )
             )
@@ -230,7 +230,7 @@ private fun RecordingIndicator(
                 .scale(if (isPaused) 1f else pulse)
                 .clip(CircleShape)
                 .background(
-                    if (isPaused) Color(0xFFFFC107) else Color(0xFFFF5252)
+                    if (isPaused) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error
                 )
         )
 
@@ -238,7 +238,7 @@ private fun RecordingIndicator(
             text = if (isPaused) "PAUSED" else "RECORDING",
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = if (isPaused) Color(0xFFFFC107) else Color(0xFFFF5252),
+            color = if (isPaused) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
             letterSpacing = 1.sp
         )
     }
@@ -264,8 +264,8 @@ private fun LiveDataDisplay(
                 .fillMaxWidth()
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp)),
-            color = Color(0xFFFF5252),
-            trackColor = Color.Gray.copy(alpha = 0.1f)
+            color = MaterialTheme.colorScheme.error,
+            trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.1f)
         )
 
         // Time display
@@ -377,9 +377,9 @@ private fun ControlButtons(
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = Color(0xFFFFC107)
+                contentColor = MaterialTheme.colorScheme.tertiary
             ),
-            border = BorderStroke(1.dp, Color(0xFFFFC107))
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary)
         ) {
             Text(
                 text = if (isPaused) "▶ Resume" else "⏸ Pause",
@@ -394,7 +394,7 @@ private fun ControlButtons(
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4CAF50)
+                containerColor = MaterialTheme.colorScheme.primary
             )
         ) {
             Text(
@@ -424,9 +424,9 @@ private fun DurationWarning(remainingSeconds: Int) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFFFF3E0)
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
         ),
-        border = BorderStroke(1.dp, Color(0xFFFFB74D))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary)
     ) {
         Row(
             modifier = Modifier
@@ -438,13 +438,13 @@ private fun DurationWarning(remainingSeconds: Int) {
             Text(
                 "⚠",
                 fontSize = 16.sp,
-                color = Color(0xFFF57C00)
+                color = MaterialTheme.colorScheme.onTertiaryContainer
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 "Recording stops in ${remainingSeconds}s",
                 fontSize = 12.sp,
-                color = Color(0xFFF57C00),
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -495,7 +495,7 @@ fun MiniContextualMenu(
                     .scale(if (isPaused) 1f else pulse)
                     .clip(CircleShape)
                     .background(
-                        if (isPaused) Color(0xFFFFC107) else Color(0xFFFF5252)
+                        if (isPaused) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error
                     )
             )
 
@@ -526,12 +526,13 @@ fun MiniContextualMenu(
 
 // Helper functions
 
+@Composable
 private fun getMethodColor(method: CaptureMethod): Color {
     return when (method) {
-        CaptureMethod.ScreenCaptureKit -> Color(0xFF2196F3)
-        CaptureMethod.RobotApi -> Color(0xFF4CAF50)
-        CaptureMethod.FFmpeg -> Color(0xFF9C27B0)
-        CaptureMethod.Auto -> Color(0xFF607D8B)
+        CaptureMethod.ScreenCaptureKit -> MaterialTheme.colorScheme.primary
+        CaptureMethod.RobotApi -> MaterialTheme.colorScheme.tertiary
+        CaptureMethod.FFmpeg -> MaterialTheme.colorScheme.secondary
+        CaptureMethod.Auto -> MaterialTheme.colorScheme.outlineVariant
     }
 }
 

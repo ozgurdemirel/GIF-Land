@@ -121,11 +121,11 @@ private fun QuickPanelContent(
             ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White.copy(alpha = 0.98f)
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = Color.Gray.copy(alpha = 0.1f)
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.1f)
         )
     ) {
         Column(
@@ -134,8 +134,8 @@ private fun QuickPanelContent(
                 .background(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFFFAFBFC),
-                            Color.White
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            MaterialTheme.colorScheme.surface
                         )
                     )
                 )
@@ -148,8 +148,8 @@ private fun QuickPanelContent(
                     .background(
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                Color(0xFF667EEA).copy(alpha = 0.9f),
-                                Color(0xFF764BA2).copy(alpha = 0.9f)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f)
                             )
                         )
                     )
@@ -287,13 +287,13 @@ private fun QuickActionButton(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isHovered) {
-                Color(0xFF667EEA).copy(alpha = 0.1f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
             } else {
-                Color.Gray.copy(alpha = 0.05f)
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.05f)
             }
         ),
         border = if (isHovered) {
-            BorderStroke(1.dp, Color(0xFF667EEA).copy(alpha = 0.3f))
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
         } else null
     ) {
         Column(
@@ -429,17 +429,17 @@ private fun RecordingItem(
                     Text(
                         formatFileSize(mediaItem.sizeBytes),
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         "•",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         formatDuration(mediaItem.durationMs),
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -502,24 +502,25 @@ private fun EmptyStateView() {
             "No recordings yet",
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
-            color = Color.Gray
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "Start recording to see your captures here",
             fontSize = 14.sp,
-            color = Color.Gray.copy(alpha = 0.7f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
     }
 }
 
 // Helper functions
 
+@Composable
 private fun getFormatColor(format: OutputFormat): Color {
     return when (format) {
-        OutputFormat.GIF -> Color(0xFF9C27B0)
-        OutputFormat.WEBP -> Color(0xFF4CAF50)
-        OutputFormat.MP4 -> Color(0xFF2196F3)
+        OutputFormat.GIF -> MaterialTheme.colorScheme.secondary
+        OutputFormat.WEBP -> MaterialTheme.colorScheme.tertiary
+        OutputFormat.MP4 -> MaterialTheme.colorScheme.primary
     }
 }
 

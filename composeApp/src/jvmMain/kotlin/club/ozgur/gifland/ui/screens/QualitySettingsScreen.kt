@@ -61,7 +61,7 @@ data class QualitySettingsScreen(
                         }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color(0xFF3A7BD5),
+                        containerColor = MaterialTheme.colorScheme.primary,
                         titleContentColor = Color.White,
                         navigationIconContentColor = Color.White
                     )
@@ -84,7 +84,7 @@ data class QualitySettingsScreen(
                 // FPS Section
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F6FF))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -92,7 +92,7 @@ data class QualitySettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("FPS", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text("$fps", fontWeight = FontWeight.Medium, color = Color(0xFF2196F3))
+                            Text("$fps", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
                         }
                         Spacer(Modifier.height(8.dp))
                         Slider(
@@ -104,15 +104,15 @@ data class QualitySettingsScreen(
                             valueRange = 5f..60f,
                             steps = 11,
                             colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF2196F3),
-                                activeTrackColor = Color(0xFF64B5F6),
-                                inactiveTrackColor = Color(0xFFE0E0E0)
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
                             )
                         )
                         Text(
                             "Higher FPS creates smoother recordings but larger files",
                             fontSize = 12.sp,
-                            color = Color(0xFF7B8794)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -120,7 +120,7 @@ data class QualitySettingsScreen(
                 // Quality Section
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F6FF))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -135,7 +135,7 @@ data class QualitySettingsScreen(
                                 quality > 20 -> " (MAX)"
                                 quality > 15 -> " (HIGH)"
                                 else -> " (STANDARD)"
-                            }}", fontWeight = FontWeight.Medium, color = Color(0xFF2196F3))
+                            }}", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
                         }
                         Spacer(Modifier.height(8.dp))
                         Slider(
@@ -147,15 +147,15 @@ data class QualitySettingsScreen(
                             valueRange = 1f..50f,
                             steps = 48,
                             colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF2196F3),
-                                activeTrackColor = Color(0xFF64B5F6),
-                                inactiveTrackColor = Color(0xFFE0E0E0)
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
                             )
                         )
                         Text(
                             "Higher quality preserves more detail but creates larger files",
                             fontSize = 12.sp,
-                            color = Color(0xFF7B8794)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     }
@@ -163,7 +163,7 @@ data class QualitySettingsScreen(
                 // Fast GIF preview toggle
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -175,7 +175,7 @@ data class QualitySettingsScreen(
                             Text(
                                 "Lower FPS (8–10) and smaller resolution for quick previews",
                                 fontSize = 12.sp,
-                                color = Color(0xFF7B8794)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Switch(
@@ -265,7 +265,7 @@ data class QualitySettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C7ED6))
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
                     Text("Save Settings", fontSize = 16.sp)
                 }

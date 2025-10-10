@@ -10,8 +10,14 @@ class JVMPlatform {
 
 fun getPlatform() = JVMPlatform()
 
-fun openFileLocation(file: File) {
+fun openFileLocation(filePath: String) {
     runCatching {
+        val file = File(filePath)
+        if (!file.exists()) {
+            println("File does not exist: $filePath")
+            return
+        }
+
         val os = System.getProperty("os.name").lowercase()
         when {
             os.contains("mac") -> {

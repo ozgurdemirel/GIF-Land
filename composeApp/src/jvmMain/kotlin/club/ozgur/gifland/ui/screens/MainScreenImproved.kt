@@ -29,7 +29,7 @@ import club.ozgur.gifland.core.Recorder
 import club.ozgur.gifland.core.RecorderSettings
 import club.ozgur.gifland.ui.components.AreaSelector
 import club.ozgur.gifland.ui.components.CaptureArea
-import club.ozgur.gifland.util.openFileLocation
+import club.ozgur.gifland.platform.PlatformActions
 import club.ozgur.gifland.encoder.FFmpegDebugManager
 import kotlinx.coroutines.launch
 
@@ -71,7 +71,7 @@ object MainScreenImproved : Screen {
 
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(0xFFF8FAFC)
+            color = MaterialTheme.colorScheme.background
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // Error dialog
@@ -151,17 +151,17 @@ object MainScreenImproved : Screen {
                                 .heightIn(min = 80.dp), // Minimum height for consistency
                             colors = CardDefaults.cardColors(
                                 containerColor = when {
-                                    isSaving -> Color(0xFF4FC3F7).copy(alpha = 0.1f)
-                                    savedFile != null -> Color(0xFF66BB6A).copy(alpha = 0.1f)
-                                    else -> Color(0xFF66BB6A).copy(alpha = 0.1f)
+                                    isSaving -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)
+                                    savedFile != null -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.1f)
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
                                 }
                             ),
                             border = BorderStroke(
                                 1.dp,
                                 when {
-                                    isSaving -> Color(0xFF4FC3F7)
-                                    savedFile != null -> Color(0xFF66BB6A)
-                                    else -> Color(0xFF66BB6A)
+                                    isSaving -> MaterialTheme.colorScheme.secondary
+                                    savedFile != null -> MaterialTheme.colorScheme.tertiary
+                                    else -> MaterialTheme.colorScheme.outlineVariant
                                 }
                             )
                         ) {
@@ -179,7 +179,7 @@ object MainScreenImproved : Screen {
                                         ) {
                                             CircularProgressIndicator(
                                                 modifier = Modifier.size(24.dp),
-                                                color = Color(0xFF4FC3F7),
+                                                color = MaterialTheme.colorScheme.secondary,
                                                 strokeWidth = 3.dp
                                             )
                                             Text(
@@ -208,10 +208,10 @@ object MainScreenImproved : Screen {
                                             Button(
                                                 onClick = {
                                                     Log.d("MainScreen", "Open Folder clicked for: ${savedFile.absolutePath}")
-                                                    openFileLocation(savedFile)
+                                                    PlatformActions.openFileLocation(savedFile.absolutePath)
                                                 },
                                                 colors = ButtonDefaults.buttonColors(
-                                                    containerColor = Color(0xFF4CAF50)
+                                                    containerColor = MaterialTheme.colorScheme.tertiary
                                                 )
                                             ) {
                                                 Text("📂 Open Folder", fontSize = 14.sp)
@@ -223,7 +223,7 @@ object MainScreenImproved : Screen {
                                             message,
                                             fontSize = 16.sp,
                                             textAlign = TextAlign.Center,
-                                            color = Color(0xFF666666)
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -236,7 +236,7 @@ object MainScreenImproved : Screen {
                         modifier = Modifier
                             .fillMaxWidth()
                             .alpha(if (recordingState.isSaving) 0.5f else 1f),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
@@ -247,7 +247,7 @@ object MainScreenImproved : Screen {
                                 "Capture Area",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 18.sp,
-                                color = Color(0xFF333333)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
 
                             Row(
@@ -265,7 +265,7 @@ object MainScreenImproved : Screen {
                                         },
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (selectedArea == null)
-                                            Color(0xFF667EEA) else Color(0xFFF7F9FC)
+                                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
                                     ),
                                     elevation = CardDefaults.cardElevation(
                                         defaultElevation = if (selectedArea == null) 3.dp else 1.dp
@@ -285,7 +285,7 @@ object MainScreenImproved : Screen {
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             "Full Screen",
-                                            color = if (selectedArea == null) Color.White else Color.Black,
+                                            color = if (selectedArea == null) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                                             fontSize = 14.sp,
                                             fontWeight = if (selectedArea == null) FontWeight.Bold else FontWeight.Normal
                                         )
@@ -307,7 +307,7 @@ object MainScreenImproved : Screen {
                                         },
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (selectedArea != null)
-                                            Color(0xFF667EEA) else Color(0xFFF7F9FC)
+                                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
                                     ),
                                     elevation = CardDefaults.cardElevation(
                                         defaultElevation = if (selectedArea != null) 3.dp else 1.dp
@@ -327,7 +327,7 @@ object MainScreenImproved : Screen {
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             "Select Area",
-                                            color = if (selectedArea != null) Color.White else Color.Black,
+                                            color = if (selectedArea != null) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                                             fontSize = 14.sp,
                                             fontWeight = if (selectedArea != null) FontWeight.Bold else FontWeight.Normal
                                         )
@@ -340,13 +340,13 @@ object MainScreenImproved : Screen {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(
-                                        containerColor = Color(0xFF667EEA).copy(alpha = 0.1f)
+                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                                     )
                                 ) {
                                     Text(
                                         "Selected: ${selectedArea?.width} × ${selectedArea?.height} pixels",
                                         modifier = Modifier.padding(12.dp),
-                                        color = Color(0xFF667EEA),
+                                        color = MaterialTheme.colorScheme.primary,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Medium,
                                         textAlign = TextAlign.Center
@@ -359,7 +359,7 @@ object MainScreenImproved : Screen {
                     // Recording Settings - Better organized
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(
@@ -370,7 +370,7 @@ object MainScreenImproved : Screen {
                                 "Recording Settings",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 18.sp,
-                                color = Color(0xFF333333)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
 
                             // Format Selection
@@ -378,7 +378,7 @@ object MainScreenImproved : Screen {
                                 Text(
                                     "Output Format",
                                     fontSize = 14.sp,
-                                    color = Color(0xFF666666),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.Medium
                                 )
                                 Row(
@@ -405,7 +405,7 @@ object MainScreenImproved : Screen {
                                 Text(
                                     "Max Duration",
                                     fontSize = 14.sp,
-                                    color = Color(0xFF666666),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.Medium
                                 )
                                 Row(
@@ -439,7 +439,7 @@ object MainScreenImproved : Screen {
                                         navigator.push(IntegratedSettingsScreen)
                                     },
                                 colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFFF5F7FA)
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 ),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                             ) {
@@ -464,11 +464,11 @@ object MainScreenImproved : Screen {
                                             Text(
                                                 "FPS: ${recorder.settings.fps} • Quality: ${recorder.settings.quality}",
                                                 fontSize = 13.sp,
-                                                color = Color.Gray
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
-                                    Text("→", fontSize = 18.sp, color = Color(0xFF667EEA))
+                                    Text("→", fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                         }
@@ -480,6 +480,8 @@ object MainScreenImproved : Screen {
                     Button(
                         onClick = {
                             recorder.reset()
+                            // Navigate immediately to RecordingScreen to avoid overlap
+                            navigator.push(RecordingScreen)
                             recorder.startRecording(
                                 area = selectedArea,
                                 onUpdate = { /* Handled by StateFlow */ },
@@ -525,7 +527,7 @@ object MainScreenImproved : Screen {
                     // Footer
                     Text(
                         text = "Press Ctrl+Shift+R to start recording with hotkey",
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
@@ -546,7 +548,7 @@ object MainScreenImproved : Screen {
                 .height(42.dp)
                 .clickable { onClick() },
             colors = CardDefaults.cardColors(
-                containerColor = if (selected) Color(0xFF667EEA) else Color(0xFFF7F9FC)
+                containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
             ),
             shape = RoundedCornerShape(21.dp),
             elevation = CardDefaults.cardElevation(if (selected) 2.dp else 0.dp)
@@ -558,7 +560,7 @@ object MainScreenImproved : Screen {
                 Text(
                     text,
                     fontSize = 14.sp,
-                    color = if (selected) Color.White else Color.Black,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                 )
             }
@@ -577,7 +579,7 @@ object MainScreenImproved : Screen {
                 .height(42.dp)
                 .clickable { onClick() },
             colors = CardDefaults.cardColors(
-                containerColor = if (selected) Color(0xFF667EEA) else Color(0xFFF7F9FC)
+                containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
             ),
             shape = RoundedCornerShape(21.dp),
             elevation = CardDefaults.cardElevation(if (selected) 2.dp else 0.dp)
@@ -589,7 +591,7 @@ object MainScreenImproved : Screen {
                 Text(
                     text,
                     fontSize = 14.sp,
-                    color = if (selected) Color.White else Color.Black,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                 )
             }

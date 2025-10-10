@@ -77,10 +77,30 @@ class SettingsViewModel(
     }
 
     /**
-     * Change app theme
+     * Change app theme.
+     * Persist immediately so ThemeProvider (which observes SettingsRepository.settingsFlow)
+     * recomposes and applies colors right away. Also keep pending settings in sync when
+     * the Settings screen is open.
      */
     fun changeTheme(theme: AppTheme) {
-        updateGeneralSetting { it.copy(theme = theme) }
+        viewModelScope.launch {
+            try {
+                // Persist immediately
+                settingsRepository.updateSetting { it.copy(theme = theme) }
+
+                // If the Settings screen is currently open, mirror the change into pending state
+                val current = appState.value
+                if (current is AppState.ConfiguringSettings) {
+                    stateRepository.updatePendingSettings(current.currentSettings.copy(theme = theme))
+                }
+            } catch (e: Exception) {
+                stateRepository.handleError(
+                    message = "Failed to change theme",
+                    cause = e,
+                    recoverable = true
+                )
+            }
+        }
     }
 
     /**

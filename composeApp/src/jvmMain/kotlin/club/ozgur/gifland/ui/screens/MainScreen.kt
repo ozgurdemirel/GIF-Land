@@ -29,7 +29,7 @@ import club.ozgur.gifland.core.Recorder
 import club.ozgur.gifland.core.RecorderSettings
 import club.ozgur.gifland.ui.components.AreaSelector
 import club.ozgur.gifland.ui.components.CaptureArea
-import club.ozgur.gifland.util.openFileLocation
+import club.ozgur.gifland.platform.PlatformActions
 import club.ozgur.gifland.encoder.FFmpegDebugManager
 import kotlinx.coroutines.launch
 
@@ -73,7 +73,7 @@ object MainScreen : Screen {
 
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(0xFFF8FAFC)
+            color = MaterialTheme.colorScheme.background
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 if (lastError != null) {
@@ -279,10 +279,10 @@ object MainScreen : Screen {
                                                 Button(
                                                     onClick = {
                                                         Log.d("MainScreen", "Open Folder clicked for: ${lastSavedFile!!.absolutePath}")
-                                                        openFileLocation(lastSavedFile!!)
+                                                        PlatformActions.openFileLocation(lastSavedFile!!.absolutePath)
                                                     },
                                                     colors = ButtonDefaults.buttonColors(
-                                                        containerColor = Color(0xFF4CAF50)
+                                                        containerColor = MaterialTheme.colorScheme.tertiary
                                                     ),
                                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                                     modifier = Modifier.padding(start = 8.dp)
@@ -303,7 +303,7 @@ object MainScreen : Screen {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .alpha(if (recordingState.isSaving) 0.5f else 1f),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                         ) {
                             Column(
@@ -420,7 +420,7 @@ object MainScreen : Screen {
                                 .clickable {
                                     navigator.push(IntegratedSettingsScreen)
                                 },
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                         ) {
                             Row(
@@ -438,7 +438,7 @@ object MainScreen : Screen {
                                 Text(
                                     "FPS: ${recorder.settings.fps} • Q: ${recorder.settings.quality}",
                                     fontSize = 12.sp,
-                                    color = Color.Gray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -631,7 +631,7 @@ object MainScreen : Screen {
                     if (!recordingState.isRecording) {
                         Text(
                             text = "Made with ❤️ by @ozgurdemirel",
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.sp,
                             modifier = Modifier.padding(4.dp)
                         )
@@ -691,7 +691,7 @@ object MainScreen : Screen {
     ) {
         Card(
             modifier = modifier,
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(

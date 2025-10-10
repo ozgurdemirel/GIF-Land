@@ -145,19 +145,31 @@ class Recorder {
 
         fallbackStep = 0
         val isMac = System.getProperty("os.name").lowercase().contains("mac") || System.getProperty("os.name").lowercase().contains("darwin")
+        val osVersion = System.getProperty("os.version")
         var sckInitFailureMsg: String? = null
-        // Cap SCK FPS to 5 to reduce load on JPEG encoding
-        val sckFps = minOf(clampedFps, 5)
+        // Cap SCK FPS to 10 to reduce load on JPEG encoding (increased from 5 for smoother recordings)
+        val sckFps = minOf(clampedFps, 10)
         captureStrategy = if (isMac) {
             runCatching {
-                ScreenCaptureKitStrategy().also { it.start(area, sckFps, settings.scale, jpegQualityPercent, tempDir!!) }
+                Log.d("Recorder", "Attempting to initialize ScreenCaptureKit (macOS $osVersion)")
+                ScreenCaptureKitStrategy().also {
+                    it.start(area, sckFps, settings.scale, jpegQualityPercent, tempDir!!)
+                    Log.d("Recorder", "ScreenCaptureKit initialized successfully with ${sckFps}fps")
+                }
             }.onFailure { err ->
                 val msg = err.message?.takeIf { it.isNotBlank() }
-                sckInitFailureMsg = if (msg != null) "ScreenCaptureKit başlatılamadı: $msg" else "ScreenCaptureKit başlatılamadı"
-                Log.d("Recorder", "SCK unavailable, falling back to Robot: ${err.message}")
+                val detail = "${err.javaClass.simpleName}${msg?.let { ": $it" } ?: ""}"
+                sckInitFailureMsg = "ScreenCaptureKit başlatılamadı ($detail)"
+                Log.e("Recorder", "ScreenCaptureKit initialization failed: $detail", err)
+                Log.d("Recorder", "Possible causes: macOS version < 12.3, missing screen recording permissions, or native library loading issues")
+                Log.d("Recorder", "Falling back to Robot API due to SCK failure")
             }
-             .getOrElse { RobotApiCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) } }
+             .getOrElse {
+                 Log.d("Recorder", "Using Robot API fallback strategy (${clampedFps}fps)")
+                 RobotApiCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
+             }
         } else {
+            Log.d("Recorder", "Non-macOS platform detected (${System.getProperty("os.name")}), using Robot API")
             RobotApiCaptureStrategy().also { it.start(area, clampedFps, settings.scale, jpegQualityPercent, tempDir!!) }
         }
         // Update capture method label in state (and any initial failure details)
