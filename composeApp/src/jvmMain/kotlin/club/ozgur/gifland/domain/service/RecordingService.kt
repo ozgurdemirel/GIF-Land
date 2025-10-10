@@ -1,5 +1,6 @@
 package club.ozgur.gifland.domain.service
 
+import club.ozgur.gifland.core.ApplicationScope
 import club.ozgur.gifland.core.Recorder
 import club.ozgur.gifland.core.RecorderSettings
 import club.ozgur.gifland.domain.model.*
@@ -8,6 +9,8 @@ import club.ozgur.gifland.domain.repository.SettingsRepository
 import club.ozgur.gifland.ui.components.CaptureArea
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import java.io.File
@@ -17,14 +20,24 @@ import java.io.File
  */
 class RecordingService(
     private val stateRepository: StateRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val recorder: Recorder
 ) {
-    private val recorder = Recorder()
     private var recordingJob: Job? = null
 
+    /**
+     * Mutex to prevent concurrent recording operations
+     */
+    private val recordingMutex = Mutex()
+
+    /**
+     * Track last update time to prevent out-of-order updates
+     */
+    private var lastUpdateTime = 0L
+
     init {
-        // Sync recorder settings with app settings
-        CoroutineScope(Dispatchers.Default).launch {
+        // Sync recorder settings with app settings using ApplicationScope
+        ApplicationScope.launchIO {
             settingsRepository.settingsFlow.collect { appSettings ->
                 recorder.settings = RecorderSettings(
                     fps = appSettings.defaultFps,
@@ -38,13 +51,18 @@ class RecordingService(
         }
     }
 
-    suspend fun startRecording(captureArea: CaptureArea? = null) {
+    suspend fun startRecording(captureArea: CaptureArea? = null) = recordingMutex.withLock {
         val appState = stateRepository.state.value
 
-        // Only start if in idle state
-        if (appState !is AppState.Idle) {
-            return
+        // Only start if in idle state or preparing state
+        if (appState !is AppState.Idle && appState !is AppState.PreparingRecording) {
+            println("RecordingService: Cannot start recording - not in idle/preparing state (current: $appState)")
+            return@withLock
         }
+
+        // Cancel any existing recording job
+        recordingJob?.cancel()
+        recordingJob = null
 
         // Get current settings
         val settings = settingsRepository.getCurrentSettings()
@@ -61,32 +79,50 @@ class RecordingService(
             maxDuration = settings.defaultMaxDuration
         )
 
-        // Start actual recording with callbacks
-        recordingJob = CoroutineScope(Dispatchers.IO).launch {
+        // Reset last update time
+        lastUpdateTime = 0L
+
+        // Start actual recording with synchronized callbacks
+        recordingJob = ApplicationScope.launchIO {
             recorder.startRecording(
                 area = captureArea,
                 onUpdate = { recorderState ->
-                    // Update recording progress in app state
-                    CoroutineScope(Dispatchers.IO).launch {
-                        stateRepository.updateRecordingProgress(
-                            frameCount = recorderState.frameCount,
-                            duration = recorderState.duration,
-                            estimatedSize = recorderState.estimatedSize,
-                            captureMethodDetails = recorderState.captureMethodDetails
-                        )
+                    val updateTime = System.currentTimeMillis()
 
-                        // Handle pause state
-                        if (recorderState.isPaused) {
-                            val currentState = stateRepository.state.value
-                            if (currentState is AppState.Recording && !currentState.isPaused) {
-                                stateRepository.togglePauseRecording()
+                    // Prevent out-of-order updates
+                    if (updateTime > lastUpdateTime) {
+                        lastUpdateTime = updateTime
+
+                        // Use runBlocking to ensure updates complete before next callback
+                        runBlocking {
+                            try {
+                                stateRepository.updateRecordingProgress(
+                                    frameCount = recorderState.frameCount,
+                                    duration = recorderState.duration,
+                                    estimatedSize = recorderState.estimatedSize,
+                                    captureMethodDetails = recorderState.captureMethodDetails
+                                )
+
+                                // Handle pause state
+                                if (recorderState.isPaused) {
+                                    val currentState = stateRepository.state.value
+                                    if (currentState is AppState.Recording && !currentState.isPaused) {
+                                        stateRepository.togglePauseRecording()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                println("RecordingService: Error updating recording progress: ${e.message}")
                             }
                         }
                     }
                 },
                 onComplete = { result ->
-                    CoroutineScope(Dispatchers.IO).launch {
-                        handleRecordingComplete(result)
+                    runBlocking {
+                        try {
+                            handleRecordingComplete(result)
+                        } catch (e: Exception) {
+                            println("RecordingService: Error handling recording completion: ${e.message}")
+                        }
                     }
                 }
             )

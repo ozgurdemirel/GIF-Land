@@ -3,6 +3,7 @@ package club.ozgur.gifland.di
 import club.ozgur.gifland.domain.repository.MediaRepository
 import club.ozgur.gifland.domain.service.RecordingService
 import club.ozgur.gifland.platform.PlatformMediaRepository
+import club.ozgur.gifland.core.Recorder
 import com.russhwolf.settings.PreferencesSettings
 import com.russhwolf.settings.Settings
 import kotlinx.coroutines.runBlocking
@@ -22,8 +23,11 @@ val platformModule = module {
         )
     }
 
-    // Recording service - platform-specific implementation that wraps the JVM Recorder
-    single { RecordingService(get(), get()) }
+    // Shared Recorder singleton so UI and service observe the same instance
+    single { Recorder() }
+
+    // Recording service - uses shared Recorder and repositories
+    single { RecordingService(get(), get(), get()) }
 
     // Media repository with platform-specific file operations
     single<MediaRepository> {

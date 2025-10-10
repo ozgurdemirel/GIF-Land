@@ -87,18 +87,9 @@ fun App(
         }
     }
 
-    // ===== 4. RECORDER OLUŞTURMA (Geçici - sonra service'e taşınacak) =====
-    /**
-     * remember { } kullanımı:
-     * - Recomposition'lar arasında değeri korur
-     * - Yani UI yeniden çizildiğinde Recorder yeniden oluşturulmaz
-     * - Singleton pattern'e benzer bir davranış sağlar
-     *
-     * Neden önemli?
-     * Recorder kayıt yapan ana nesnemiz. Her UI güncellemesinde
-     * yeni bir Recorder oluşturmak kayıtları kaybetmemize neden olur!
-     */
-    val recorder = remember { Recorder() }
+    // ===== 4. RECORDER SAĞLAMA (DI üzerinden tekil instance) =====
+    // UI ile RecordingService aynı Recorder'ı paylaşsın diye Koin'den alınır
+    val recorder = koinInject<Recorder>()
 
     // Get the current window reference
     val currentWindow = remember {
@@ -138,8 +129,8 @@ fun App(
                 }
             )
 
-            val showRecordingMenu = appState is AppState.Recording
-            ContextualActionMenu(visible = showRecordingMenu)
+            // Recording overlay disabled to unify UI with RecordingScreen
+            // ContextualActionMenu removed; main window RecordingScreen will be used
         }
     }
 }

@@ -24,6 +24,15 @@ import kotlinx.coroutines.launch
 import club.ozgur.gifland.util.Log
 import androidx.compose.ui.window.DialogProperties
 
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.style.TextAlign
+import club.ozgur.gifland.LocalWindowControl
+import club.ozgur.gifland.ui.components.DraggableWindowTitleBar
+
 object RecordingScreen : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -62,13 +71,77 @@ object RecordingScreen : Screen {
 
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            color = Color.Transparent
         ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .widthIn(max = 320.dp)
+                        .heightIn(max = 520.dp)
+                        .shadow(12.dp, RoundedCornerShape(20.dp)),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+
+            // Draggable compact window title bar
+            val windowControl = LocalWindowControl.current
+            DraggableWindowTitleBar(
+                title = "Recording",
+                onClose = { windowControl.onMinimizeToTray() }
+            )
+
+            // Scrollable compact content with fade gradients
+            val scrollState = rememberScrollState()
+            val canScroll = scrollState.maxValue > 0
+
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .padding(20.dp)
+                    .drawWithContent {
+                        drawContent()
+                        if (canScroll) {
+                            // Top fade when not at top
+                            if (scrollState.value > 0) {
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White,
+                                            Color.White.copy(alpha = 0f)
+                                        ),
+                                        startY = 0f,
+                                        endY = 50f
+                                    ),
+                                    topLeft = Offset.Zero,
+                                    size = Size(size.width, 50f)
+                                )
+                            }
+                            // Bottom fade when not at bottom
+                            if (scrollState.value < scrollState.maxValue) {
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0f),
+                                            Color.White
+                                        ),
+                                        startY = size.height - 50f,
+                                        endY = size.height
+                                    ),
+                                    topLeft = Offset(0f, size.height - 50f),
+                                    size = Size(size.width, 50f)
+                                )
+                            }
+                        }
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (lastError != null) {
                     AlertDialog(
@@ -333,6 +406,9 @@ object RecordingScreen : Screen {
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
+            }
+            }
+
         }
     }
 }

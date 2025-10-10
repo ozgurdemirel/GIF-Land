@@ -7,15 +7,17 @@ import androidx.compose.ui.window.*
 import club.ozgur.gifland.di.appModule
 import club.ozgur.gifland.di.platformModule
 import club.ozgur.gifland.domain.repository.StateRepository
+import club.ozgur.gifland.domain.repository.WindowStateRepository
 import club.ozgur.gifland.domain.repository.SettingsRepository
+import club.ozgur.gifland.domain.model.AppState
 import club.ozgur.gifland.domain.model.AppSettings
 import club.ozgur.gifland.domain.service.RecordingService
+import club.ozgur.gifland.core.ApplicationScope
+import club.ozgur.gifland.util.DebounceManager
 import club.ozgur.gifland.platform.GlobalHotkeyManager
 import club.ozgur.gifland.platform.SystemTray
 import club.ozgur.gifland.ui.components.AreaSelector
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import org.koin.core.context.GlobalContext.startKoin
 import org.koin.core.context.GlobalContext.get
 
@@ -34,37 +36,12 @@ fun main() = application {
 
     val stateRepository = remember { koinApp.koin.get<StateRepository>() }
     val recordingService = remember { koinApp.koin.get<RecordingService>() }
-    val scope = rememberCoroutineScope()
+    val windowStateRepository = remember { WindowStateRepository() }
+    val debounceManager = remember { DebounceManager() }
 
-    // Window visibility state for minimize to tray
-    var isWindowVisible by remember { mutableStateOf(true) }
-    // Countdown state for tray-based delayed recording
-    var countdownSeconds by remember { mutableStateOf<Int?>(null) }
-    var countdownJob by remember { mutableStateOf<Job?>(null) }
+    // Observe window visibility state
+    val isWindowVisible by windowStateRepository.windowVisible.collectAsState()
 
-    fun startCountdownRecording(seconds: Int = appSettings.countdownDuration) {
-        countdownJob?.cancel()
-        // If countdown disabled or 0, start immediately
-        if (seconds <= 0) {
-            scope.launch { recordingService.startRecording(null) }
-            return
-        }
-        countdownJob = scope.launch {
-            for (i in seconds downTo 1) {
-                countdownSeconds = i
-                delay(1000)
-            }
-            countdownSeconds = null
-            // Start recording silently without showing the main window
-            recordingService.startRecording(null)
-        }
-    }
-
-    fun cancelCountdown() {
-        countdownJob?.cancel()
-        countdownJob = null
-        countdownSeconds = null
-    }
 
     var shouldExit by remember { mutableStateOf(false) }
 
@@ -87,52 +64,86 @@ fun main() = application {
 
         val callbacks = mapOf<club.ozgur.gifland.domain.model.HotkeyAction, () -> Unit>(
             club.ozgur.gifland.domain.model.HotkeyAction.StartRecording to {
-                scope.launch {
-                    isWindowVisible = true
-                    recordingService.startRecording(null)
+                ApplicationScope.launch {
+                    debounceManager.debounce(
+                        DebounceManager.Companion.Keys.START_RECORDING,
+                        DebounceManager.Companion.Delays.RECORDING
+                    ) {
+                        windowStateRepository.showWindow("hotkey_start_recording")
+                        recordingService.startRecording(null)
+                    }
                 }
                 Unit
             },
             club.ozgur.gifland.domain.model.HotkeyAction.StopRecording to {
-                scope.launch {
-                    recordingService.stopRecording()
+                ApplicationScope.launch {
+                    debounceManager.debounce(
+                        DebounceManager.Companion.Keys.STOP_RECORDING,
+                        DebounceManager.Companion.Delays.RECORDING
+                    ) {
+                        recordingService.stopRecording()
+                    }
                 }
                 Unit
             },
             club.ozgur.gifland.domain.model.HotkeyAction.PauseRecording to {
-                scope.launch {
+                ApplicationScope.launch {
                     recordingService.pauseRecording()
                 }
                 Unit
             },
             club.ozgur.gifland.domain.model.HotkeyAction.SelectArea to {
-                val selector = AreaSelector { area ->
-                    if (area != null) {
-                        scope.launch {
-                            // Start recording first, then show window
-                            recordingService.startRecording(area)
-                            isWindowVisible = true
+                ApplicationScope.launch {
+                    debounceManager.debounce(
+                        DebounceManager.Companion.Keys.AREA_SELECT,
+                        DebounceManager.Companion.Delays.UI
+                    ) {
+                        val selector = AreaSelector { area ->
+                            if (area != null) {
+                                ApplicationScope.launch {
+                                    // Show window and start recording after area is selected
+                                    windowStateRepository.showWindow("tray_area_selected")
+                                    recordingService.startRecording(area)
+                                }
+                            }
                         }
+                        selector.isVisible = true
                     }
                 }
-                selector.isVisible = true
                 Unit
             },
             club.ozgur.gifland.domain.model.HotkeyAction.QuickCapture to {
-                scope.launch {
-                    isWindowVisible = true
-                    recordingService.startRecording(null)
+                ApplicationScope.launch {
+                    debounceManager.debounce(
+                        DebounceManager.Companion.Keys.START_RECORDING,
+                        DebounceManager.Companion.Delays.RECORDING
+                    ) {
+                        windowStateRepository.showWindow("hotkey_quick_capture")
+                        recordingService.startRecording(null)
+                    }
                 }
                 Unit
             },
             club.ozgur.gifland.domain.model.HotkeyAction.ShowQuickPanel to {
-                scope.launch {
-                    stateRepository.toggleQuickPanel()
+                ApplicationScope.launch {
+                    debounceManager.debounce(
+                        DebounceManager.Companion.Keys.QUICK_PANEL_TOGGLE,
+                        DebounceManager.Companion.Delays.UI
+                    ) {
+                        stateRepository.toggleQuickPanel()
+                    }
                 }
                 Unit
             },
             club.ozgur.gifland.domain.model.HotkeyAction.ShowMainWindow to {
-                isWindowVisible = true
+                ApplicationScope.launch {
+                    debounceManager.debounce(
+                        DebounceManager.Companion.Keys.SHOW_WINDOW,
+                        DebounceManager.Companion.Delays.WINDOW
+                    ) {
+                        windowStateRepository.showWindow("hotkey_show_window")
+                    }
+                }
                 Unit
             }
         )
@@ -147,9 +158,11 @@ fun main() = application {
     val appState by stateRepository.state.collectAsState()
     fun formatTime(s: Int): String = "%02d:%02d".format(s / 60, s % 60)
     val trayTooltip = when (val st = appState) {
-        is club.ozgur.gifland.domain.model.AppState.Recording ->
+        is AppState.Recording ->
             "Recording... ${formatTime(st.session.duration)} / ${formatTime(st.session.maxDuration)}"
-        else -> countdownSeconds?.let { "Recording starts in ${it}s..." } ?: "GIF/WebP/MP4 Recorder"
+        is AppState.PreparingRecording ->
+            st.countdown?.let { "Recording starts in ${it}s..." } ?: "Preparing to record..."
+        else -> "GIF/WebP/MP4 Recorder"
     }
 
     val windowState = rememberWindowState(
@@ -160,53 +173,146 @@ fun main() = application {
 
     // System tray support
     if (!shouldExit) {
+        val countdownSeconds = (appState as? AppState.PreparingRecording)?.countdown
+
         SystemTray(
             tooltip = trayTooltip,
-            isRecording = appState is club.ozgur.gifland.domain.model.AppState.Recording,
+            isRecording = appState is AppState.Recording,
             onQuickCapture = {
-                scope.launch {
-                    // Immediate recording (no delay) - keep window hidden
-                    recordingService.startRecording(null)
+                ApplicationScope.launch {
+                    try {
+                        debounceManager.debounce(
+                            DebounceManager.Companion.Keys.START_RECORDING,
+                            DebounceManager.Companion.Delays.RECORDING
+                        ) {
+                            // Immediate recording (no delay) - keep window hidden
+                            windowStateRepository.showWindow("tray_quick_capture")
+                            recordingService.startRecording(null)
+                        }
+                    } catch (e: Exception) {
+                        println("Error starting quick capture: ${e.message}")
+                    }
                 }
             },
             onSelectArea = {
-                // Show area selector WITHOUT showing main window first
-                val selector = AreaSelector { area ->
-                    if (area != null) {
-                        scope.launch {
-                            // Start recording silently after area is selected
-                            recordingService.startRecording(area)
+                ApplicationScope.launch {
+                    try {
+                        debounceManager.debounce(
+                            DebounceManager.Companion.Keys.AREA_SELECT,
+                            DebounceManager.Companion.Delays.UI
+                        ) {
+                            // Show area selector WITHOUT showing main window first
+                            val selector = AreaSelector { area ->
+                                if (area != null) {
+                                    ApplicationScope.launch {
+                                        // Start recording silently after area is selected
+                                        recordingService.startRecording(area)
+                                    }
+                                }
+                            }
+                            selector.isVisible = true
                         }
+                    } catch (e: Exception) {
+                        println("Error selecting area: ${e.message}")
                     }
                 }
-                selector.isVisible = true
             },
             onShowQuickPanel = {
-                scope.launch {
-                    stateRepository.toggleQuickPanel()
+                ApplicationScope.launch {
+                    try {
+                        debounceManager.debounce(
+                            DebounceManager.Companion.Keys.QUICK_PANEL_TOGGLE,
+                            DebounceManager.Companion.Delays.UI
+                        ) {
+                            stateRepository.toggleQuickPanel()
+                        }
+                    } catch (e: Exception) {
+                        println("Error toggling quick panel: ${e.message}")
+                    }
                 }
             },
             onShowMainWindow = {
-                isWindowVisible = true
+                ApplicationScope.launch {
+                    try {
+                        debounceManager.debounce(
+                            DebounceManager.Companion.Keys.SHOW_WINDOW,
+                            DebounceManager.Companion.Delays.WINDOW
+                        ) {
+                            windowStateRepository.showWindow("tray_show_main")
+                        }
+                    } catch (e: Exception) {
+                        println("Error showing main window: ${e.message}")
+                    }
+                }
             },
             onOpenSettings = {
-                scope.launch {
-                    isWindowVisible = true
-                    stateRepository.openSettings()
+                ApplicationScope.launch {
+                    try {
+                        windowStateRepository.showWindow("tray_open_settings")
+                        stateRepository.openSettings()
+                    } catch (e: Exception) {
+                        println("Error opening settings: ${e.message}")
+                    }
                 }
             },
             onExit = {
-                shouldExit = true
-                exitApplication()
+                ApplicationScope.launch {
+                    try {
+                        ApplicationScope.shutdown()
+                        shouldExit = true
+                        exitApplication()
+                    } catch (e: Exception) {
+                        println("Error during exit: ${e.message}")
+                    }
+                }
             },
             countdownSeconds = countdownSeconds,
             defaultDelaySeconds = if (appSettings.showCountdown) appSettings.countdownDuration else 0,
-            onStartCountdown = { startCountdownRecording(it) },
-            onCancelCountdown = { cancelCountdown() },
+            onStartCountdown = { seconds ->
+                ApplicationScope.launch {
+                    try {
+                        debounceManager.debounce(
+                            DebounceManager.Companion.Keys.COUNTDOWN_START,
+                            DebounceManager.Companion.Delays.COUNTDOWN
+                        ) {
+                            stateRepository.startCountdownRecording(seconds) {
+                                windowStateRepository.showWindow("tray_countdown_complete")
+                                recordingService.startRecording(null)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        println("Error starting countdown: ${e.message}")
+                    }
+                }
+            },
+            onCancelCountdown = {
+                ApplicationScope.launch {
+                    try {
+                        debounceManager.debounce(
+                            DebounceManager.Companion.Keys.COUNTDOWN_CANCEL,
+                            DebounceManager.Companion.Delays.COUNTDOWN
+                        ) {
+                            stateRepository.cancelCountdown()
+                        }
+                    } catch (e: Exception) {
+                        println("Error cancelling countdown: ${e.message}")
+                    }
+                }
+            },
             onQuickRecordNoDelay = {
-                scope.launch {
-                    // Keep window hidden during quick record from tray
-                    recordingService.startRecording(null)
+                ApplicationScope.launch {
+                    try {
+                        debounceManager.debounce(
+                            DebounceManager.Companion.Keys.START_RECORDING,
+                            DebounceManager.Companion.Delays.RECORDING
+                        ) {
+                            // Keep window hidden during quick record from tray
+                            windowStateRepository.showWindow("tray_quick_record")
+                            recordingService.startRecording(null)
+                        }
+                    } catch (e: Exception) {
+                        println("Error starting quick record: ${e.message}")
+                    }
                 }
             }
         )
@@ -217,7 +323,9 @@ fun main() = application {
         Window(
             onCloseRequest = {
                 // Minimize to tray instead of exiting
-                isWindowVisible = false
+                ApplicationScope.launch {
+                    windowStateRepository.minimizeToTray()
+                }
             },
             title = "GIF/WebP/MP4 Recorder",
             state = windowState,
@@ -228,9 +336,21 @@ fun main() = application {
         ) {
             App(
                 windowState,
-                onMinimizeToTray = { isWindowVisible = false },
-                onHideMainWindow = { isWindowVisible = false },
-                onShowMainWindow = { isWindowVisible = true }
+                onMinimizeToTray = {
+                    ApplicationScope.launch {
+                        windowStateRepository.minimizeToTray()
+                    }
+                },
+                onHideMainWindow = {
+                    ApplicationScope.launch {
+                        windowStateRepository.hideWindow("app_request_hide")
+                    }
+                },
+                onShowMainWindow = {
+                    ApplicationScope.launch {
+                        windowStateRepository.showWindow("app_request_show")
+                    }
+                }
             )
         }
     }

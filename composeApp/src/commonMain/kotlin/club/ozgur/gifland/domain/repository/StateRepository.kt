@@ -1,6 +1,8 @@
 package club.ozgur.gifland.domain.repository
 
 import club.ozgur.gifland.domain.model.*
+import club.ozgur.gifland.core.ApplicationScope
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +26,11 @@ class StateRepository {
     val state: StateFlow<AppState> = _state.asStateFlow()
 
     private val stateMutex = Mutex()
+
+    /**
+     * Job for managing countdown coroutine
+     */
+    private var countdownJob: Job? = null
 
     /**
      * Initialize the application state after startup
@@ -339,6 +346,129 @@ class StateRepository {
                 settings = settings
             )
         }
+    }
+
+    /**
+     * Start a countdown before recording.
+     * This manages the countdown state and automatically starts recording when finished.
+     *
+     * @param seconds Number of seconds to count down
+     * @param area Optional capture area for the recording
+     * @param onComplete Callback when recording starts after countdown
+     */
+    suspend fun startCountdownRecording(
+        seconds: Int,
+        area: CaptureRegion? = null,
+        onComplete: suspend () -> Unit = {}
+    ) {
+        stateMutex.withLock {
+            // Cancel any existing countdown
+            countdownJob?.cancel()
+            countdownJob = null
+
+            // If countdown disabled or 0, start immediately
+            if (seconds <= 0) {
+                _state.value = AppState.PreparingRecording(
+                    selectedArea = area,
+                    countdown = null,
+                    settings = getCurrentSettings() ?: AppSettings()
+                )
+                // Execute completion callback without holding the lock
+                ApplicationScope.launch {
+                    onComplete()
+                }
+                return
+            }
+
+            // Set initial countdown state
+            _state.value = AppState.PreparingRecording(
+                selectedArea = area,
+                countdown = seconds,
+                settings = getCurrentSettings() ?: AppSettings()
+            )
+        }
+
+        // Start countdown coroutine (outside the lock to avoid blocking)
+        countdownJob = ApplicationScope.launch {
+            try {
+                for (i in seconds downTo 1) {
+                    // Update countdown value
+                    updateCountdown(i)
+                    delay(1000)
+                }
+
+                // Clear countdown and prepare for recording
+                stateMutex.withLock {
+                    val current = _state.value
+                    if (current is AppState.PreparingRecording) {
+                        _state.value = current.copy(countdown = null)
+                    }
+                    countdownJob = null
+                }
+
+                // Start recording
+                onComplete()
+            } catch (e: CancellationException) {
+                // Countdown was cancelled
+                println("StateRepository: Countdown cancelled")
+            } catch (e: Exception) {
+                println("StateRepository: Error during countdown: ${e.message}")
+                handleError("Countdown failed: ${e.message}", e, true)
+            }
+        }
+    }
+
+    /**
+     * Cancel the current countdown.
+     * Returns to idle state.
+     */
+    suspend fun cancelCountdown() {
+        stateMutex.withLock {
+            countdownJob?.cancel()
+            countdownJob = null
+
+            val current = _state.value
+            if (current is AppState.PreparingRecording) {
+                // Return to idle state
+                _state.value = AppState.Idle(
+                    recentRecordings = getRecentRecordings(),
+                    settings = current.settings
+                )
+            }
+        }
+    }
+
+    /**
+     * Update the countdown value.
+     * Internal method used by the countdown coroutine.
+     */
+    private suspend fun updateCountdown(seconds: Int) {
+        stateMutex.withLock {
+            val current = _state.value
+            if (current is AppState.PreparingRecording) {
+                _state.value = current.copy(countdown = seconds)
+            }
+        }
+    }
+
+    /**
+     * Get the current countdown value.
+     * Returns null if not in countdown state.
+     */
+    fun getCurrentCountdown(): Int? {
+        val current = _state.value
+        return if (current is AppState.PreparingRecording) {
+            current.countdown
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Check if countdown is currently active.
+     */
+    fun isCountdownActive(): Boolean {
+        return countdownJob?.isActive == true
     }
 
     // Helper functions
