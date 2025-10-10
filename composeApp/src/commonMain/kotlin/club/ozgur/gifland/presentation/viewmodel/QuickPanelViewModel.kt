@@ -16,7 +16,8 @@ import kotlinx.coroutines.launch
  */
 class QuickPanelViewModel(
     private val stateRepository: StateRepository,
-    private val mediaRepository: MediaRepository
+    private val mediaRepository: MediaRepository,
+    private val recordingController: club.ozgur.gifland.domain.service.RecordingController
 ) {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -32,14 +33,8 @@ class QuickPanelViewModel(
                 // Hide quick panel
                 stateRepository.toggleQuickPanel()
 
-                // Start full screen recording
-                val fullScreen = CaptureRegion(
-                    x = 0,
-                    y = 0,
-                    width = getScreenWidth(),
-                    height = getScreenHeight()
-                )
-                stateRepository.startRecording(fullScreen)
+                // Start full screen (service will use platform default if null)
+                recordingController.startRecording(null)
             } catch (e: Exception) {
                 stateRepository.handleError(
                     message = "Quick capture failed",
@@ -244,19 +239,19 @@ class QuickPanelViewModel(
 
     // Platform-specific functions (will be implemented with expect/actual)
 
-    private fun getScreenWidth(): Int = 1920
-    private fun getScreenHeight(): Int = 1080
+    private fun getScreenWidth(): Int = club.ozgur.gifland.platform.PlatformUi.getPrimaryScreenBounds().width
+    private fun getScreenHeight(): Int = club.ozgur.gifland.platform.PlatformUi.getPrimaryScreenBounds().height
 
     private suspend fun shareMediaPlatform(mediaItem: MediaItem) {
         println("Sharing media: ${mediaItem.filePath}")
     }
 
     private suspend fun copyToClipboardPlatform(mediaItem: MediaItem) {
-        println("Copying to clipboard: ${mediaItem.filePath}")
+        club.ozgur.gifland.platform.PlatformUi.copyToClipboard(mediaItem.filePath)
     }
 
     private suspend fun openFileLocationPlatform(path: String) {
-        println("Opening file location: $path")
+        club.ozgur.gifland.platform.PlatformUi.revealInFileManager(path)
     }
 
     private fun showMainWindowPlatform() {
@@ -264,7 +259,6 @@ class QuickPanelViewModel(
     }
 
     private suspend fun pickFilePlatform(): String? {
-        println("Opening file picker")
-        return null
+        return club.ozgur.gifland.platform.PlatformUi.pickFile(title = "Import media")
     }
 }

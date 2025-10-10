@@ -93,9 +93,10 @@ object NativeEncoderSimple {
             ffmpegCommand.addAll(listOf(
                 "-lossless", "0",
                 "-quality", quality.toString(),
-                "-compression_level", "0", // Fastest encoding
-                "-method", "0", // Fastest method
-                "-loop", "0", // Infinite loop
+                // Higher compression_level and method for noticeably better quality at acceptable speed
+                "-compression_level", "6",
+                "-method", "6",
+                "-loop", "0",
                 outputFile.absolutePath
             ))
 
@@ -274,33 +275,29 @@ object NativeEncoderSimple {
             val srcW = firstImage.width
             val srcH = firstImage.height
 
-            // Derive target fps cap and scale factor from quality/fast mode
+            // Quality-first params: higher fps cap, minimal/no downscaling, richer palette, high-quality dithering
             val low = quality <= 30
             val mid = quality in 31..60
             val targetFpsCap = when {
-                fastMode -> 10
-                low -> 10
-                mid -> 12
-                else -> 15
+                fastMode -> 12
+                low -> 12
+                mid -> 16
+                else -> 20
             }
             val scaleFactor = when {
-                fastMode -> 0.5
-                low -> 0.6
-                mid -> 0.75
+                fastMode -> 0.90
+                low -> 0.95
+                mid -> 1.0
                 else -> 1.0
             }
             val maxColors = when {
-                fastMode -> 64
-                low -> 64
-                mid -> 128
+                fastMode -> 128
+                low -> 128
+                mid -> 192
                 else -> 256
             }
-            val dither = when {
-                fastMode -> "bayer:bayer_scale=5"
-                low -> "bayer:bayer_scale=5"
-                mid -> "sierra2_4a"
-                else -> "floyd_steinberg"
-            }
+            // Use high-quality dithering to reduce banding across all modes
+            val dither = "sierra2_4a"
 
             val targetFps = minOf(fps, targetFpsCap)
             var width = (srcW * scaleFactor).toInt().coerceAtLeast(1)
@@ -323,7 +320,7 @@ object NativeEncoderSimple {
                         "-y",
                         // Input image sequence
                         *buildImageSequenceInputArgs(frameFiles, targetFps).toTypedArray(),
-                        "-vf", "fps=$targetFps,scale=$width:$height:flags=lanczos,palettegen=max_colors=$maxColors:stats_mode=single",
+                        "-vf", "fps=$targetFps,scale=$width:$height:flags=lanczos,palettegen=max_colors=$maxColors:stats_mode=full",
                         paletteFile.absolutePath
                     ))
                 }
@@ -486,20 +483,23 @@ object NativeEncoderSimple {
 
             val process = ProcessBuilder(
                 ffmpegPath,
-                "-y", // Overwrite output
-                "-stats", // Enable progress stats output
+                "-y",
+                "-stats",
                 // Input image sequence
                 *buildImageSequenceInputArgs(frameFiles, fps).toTypedArray(),
-                "-vf", "scale=$width:$height", // Ensure dimensions are even
-                "-c:v", "libx264", // Use libx264 encoder
-                "-profile:v", profile, // Use high profile for near-lossless, baseline for compatibility
-                "-level", "3.0",
+                "-vf", "scale=$width:$height",
+                "-c:v", "libx264",
+                // Prefer high profile for better quality and features
+                "-profile:v", "high",
+                "-level", "4.1",
                 "-pix_fmt", "yuv420p",
-                "-preset", "fast", // Faster encoding
+                // Use a higher-quality preset and tune for animated/screen content
+                "-preset", "medium",
+                "-tune", "animation",
                 "-crf", adjustedCrf.toString(),
-                "-movflags", "faststart", // Put moov atom at start for streaming
+                "-movflags", "faststart",
                 outputFile.absolutePath
-            ).redirectErrorStream(false).start() // Don't mix stderr with stdout
+            ).redirectErrorStream(false).start()
 
             // Monitor FFmpeg progress in a separate thread
             val outputBuilder = StringBuilder()

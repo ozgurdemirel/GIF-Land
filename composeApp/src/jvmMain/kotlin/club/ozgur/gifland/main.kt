@@ -4,6 +4,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
+import androidx.compose.ui.unit.sp
+
 import club.ozgur.gifland.di.appModule
 import club.ozgur.gifland.di.platformModule
 import club.ozgur.gifland.domain.repository.StateRepository
@@ -20,6 +22,17 @@ import club.ozgur.gifland.ui.components.AreaSelector
 import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext.startKoin
 import org.koin.core.context.GlobalContext.get
+
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+
+import androidx.compose.foundation.background
 
 fun main() = application {
     // Initialize Koin dependency injection
@@ -103,7 +116,8 @@ fun main() = application {
                                 ApplicationScope.launch {
                                     // Show window and start recording after area is selected
                                     windowStateRepository.showWindow("tray_area_selected")
-                                    recordingService.startRecording(area)
+                                    val region = club.ozgur.gifland.domain.model.CaptureRegion(area.x, area.y, area.width, area.height)
+                                    recordingService.startRecording(region)
                                 }
                             }
                         }
@@ -206,7 +220,8 @@ fun main() = application {
                                 if (area != null) {
                                     ApplicationScope.launch {
                                         // Start recording silently after area is selected
-                                        recordingService.startRecording(area)
+                                        val region = club.ozgur.gifland.domain.model.CaptureRegion(area.x, area.y, area.width, area.height)
+                                        recordingService.startRecording(region)
                                     }
                                 }
                             }
@@ -317,6 +332,128 @@ fun main() = application {
             }
         )
     }
+    // Countdown overlay window (shown when tray countdown is active)
+    val countdownActive = (appState as? AppState.PreparingRecording)?.countdown
+    if (countdownActive != null && !shouldExit) {
+        Window(
+            onCloseRequest = {},
+            visible = true,
+            resizable = false,
+            undecorated = true,
+            transparent = true,
+            alwaysOnTop = true,
+            state = rememberWindowState(
+                width = 420.dp,
+                height = 320.dp,
+                position = WindowPosition(Alignment.Center)
+            )
+        ) {
+            // Minimal themed floating overlay
+            androidx.compose.material3.MaterialTheme {
+                androidx.compose.foundation.layout.Box(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.25f))
+                        .padding(12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Card(
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                        ),
+                        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 16.dp)
+                    ) {
+                        androidx.compose.foundation.layout.Column(
+                            modifier = androidx.compose.ui.Modifier
+                                .padding(horizontal = 24.dp, vertical = 20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            androidx.compose.material3.Text(
+                                text = "Recording",
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                            )
+                            // Countdown visuals: ring progress + animated number/message
+                            var startCount by remember(countdownActive != null) { mutableStateOf(if ((countdownActive ?: 1) > 0) (countdownActive ?: 1) else 1) }
+                            LaunchedEffect(countdownActive) {
+                                val v = countdownActive ?: 0
+                                if (v > startCount) startCount = v
+                            }
+
+                            val targetProgress = if (startCount > 0) 1f - (countdownActive!!.toFloat() / startCount.toFloat()) else 1f
+                            val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = targetProgress,
+                                animationSpec = androidx.compose.animation.core.tween(durationMillis = 900, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                label = "countdown-progress"
+                            )
+
+
+                            androidx.compose.foundation.layout.Box(
+                                modifier = androidx.compose.ui.Modifier.size(160.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    progress = { animatedProgress },
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                    trackColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant,
+                                    strokeWidth = 8.dp,
+                                    modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                                )
+
+                                androidx.compose.animation.AnimatedContent(
+                                    targetState = countdownActive!!,
+                                    label = "countdown-animated"
+                                ) { value ->
+                                    if (value <= 0) {
+                                        androidx.compose.foundation.layout.Spacer(
+                                            modifier = androidx.compose.ui.Modifier.height(1.dp)
+                                        )
+                                    } else {
+                                        androidx.compose.foundation.layout.Box(
+                                            contentAlignment = androidx.compose.ui.Alignment.Center
+                                        ) {
+                                            // Background circle for contrast
+                                            androidx.compose.foundation.layout.Box(
+                                                modifier = androidx.compose.ui.Modifier
+                                                    .size(120.dp)
+                                                    .background(
+                                                        color = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                                        shape = androidx.compose.foundation.shape.CircleShape
+                                                    )
+                                            )
+                                            androidx.compose.material3.Text(
+                                                text = value.toString(),
+                                                color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                                style = androidx.compose.material3.MaterialTheme.typography.displayLarge.copy(
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                                    fontSize = 108.sp,
+                                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                                        color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.35f),
+                                                        offset = androidx.compose.ui.geometry.Offset(0f, 2f),
+                                                        blurRadius = 8f
+                                                    )
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                                androidx.compose.material3.Text(
+                                    text = if ((countdownActive ?: 0) > 0) "Recording starts in ${countdownActive} seconds..." else "Recording starting now!",
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                    )
+                                )
+
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 
     // Main window (can be hidden for tray-only mode)
     if (isWindowVisible && !shouldExit) {

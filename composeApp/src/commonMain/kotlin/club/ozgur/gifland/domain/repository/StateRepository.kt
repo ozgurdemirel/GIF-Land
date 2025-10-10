@@ -391,10 +391,10 @@ class StateRepository {
         // Start countdown coroutine (outside the lock to avoid blocking)
         countdownJob = ApplicationScope.launch {
             try {
-                for (i in seconds downTo 1) {
-                    // Update countdown value
+                for (i in seconds downTo 0) {
+                    // Update countdown value (including 0 for a brief "starting now" state)
                     updateCountdown(i)
-                    delay(1000)
+                    delay(if (i == 0) 300 else 1000)
                 }
 
                 // Clear countdown and prepare for recording

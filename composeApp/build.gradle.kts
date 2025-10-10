@@ -131,6 +131,8 @@ compose.desktop {
                 // Required permissions for screen recording
                 infoPlist {
                     extraKeysRawXml = """
+                        <key>LSUIElement</key>
+                        <true/>
                         <key>NSScreenCaptureUsageDescription</key>
                         <string>WebP Recorder needs screen recording permission to capture your screen.</string>
                         <key>NSCameraUsageDescription</key>

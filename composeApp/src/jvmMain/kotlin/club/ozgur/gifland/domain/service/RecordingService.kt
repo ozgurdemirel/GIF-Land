@@ -6,7 +6,7 @@ import club.ozgur.gifland.core.RecorderSettings
 import club.ozgur.gifland.domain.model.*
 import club.ozgur.gifland.domain.repository.StateRepository
 import club.ozgur.gifland.domain.repository.SettingsRepository
-import club.ozgur.gifland.ui.components.CaptureArea
+
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -22,7 +22,7 @@ class RecordingService(
     private val stateRepository: StateRepository,
     private val settingsRepository: SettingsRepository,
     private val recorder: Recorder
-) {
+) : club.ozgur.gifland.domain.service.RecordingController {
     private var recordingJob: Job? = null
 
     /**
@@ -51,7 +51,7 @@ class RecordingService(
         }
     }
 
-    suspend fun startRecording(captureArea: CaptureArea? = null) = recordingMutex.withLock {
+    override suspend fun startRecording(captureArea: CaptureRegion?) = recordingMutex.withLock {
         val appState = stateRepository.state.value
 
         // Only start if in idle state or preparing state
@@ -67,10 +67,8 @@ class RecordingService(
         // Get current settings
         val settings = settingsRepository.getCurrentSettings()
 
-        // Map CaptureArea to CaptureRegion
-        val captureRegion = captureArea?.let {
-            CaptureRegion(it.x, it.y, it.width, it.height)
-        } ?: CaptureRegion(0, 0, 1920, 1080) // Default to full screen
+        // Determine capture region; null means default to primary screen bounds
+        val captureRegion = captureArea ?: club.ozgur.gifland.platform.PlatformUi.getPrimaryScreenBounds()
 
         // Start recording through StateRepository
         stateRepository.startRecording(
@@ -84,8 +82,11 @@ class RecordingService(
 
         // Start actual recording with synchronized callbacks
         recordingJob = ApplicationScope.launchIO {
+            val areaForRecorder = captureRegion.let { cr ->
+                club.ozgur.gifland.ui.components.CaptureArea(cr.x, cr.y, cr.width, cr.height)
+            }
             recorder.startRecording(
-                area = captureArea,
+                area = areaForRecorder,
                 onUpdate = { recorderState ->
                     val updateTime = System.currentTimeMillis()
 
@@ -129,12 +130,12 @@ class RecordingService(
         }
     }
 
-    suspend fun pauseRecording() {
+    override suspend fun pauseRecording() {
         recorder.pauseRecording()
         stateRepository.togglePauseRecording()
     }
 
-    suspend fun stopRecording() {
+    override suspend fun stopRecording() {
         val currentState = stateRepository.state.value
         if (currentState is AppState.Recording) {
             // Transition to processing state
@@ -146,7 +147,7 @@ class RecordingService(
         }
     }
 
-    suspend fun cancelRecording() {
+    override suspend fun cancelRecording() {
         recordingJob?.cancel()
         recorder.reset()
         stateRepository.cancelCurrentOperation()

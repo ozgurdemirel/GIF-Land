@@ -397,12 +397,12 @@ class Recorder {
                         Log.d("Recorder", "WebP encoding: frames=${frameFiles.size}, duration=${actualDurationMs}ms, actualFps=$actualFps (target was ${settings.fps})")
                         // Use JAVE2 on macOS to avoid signature issues
                         val webpQuality = when {
-                            settings.quality >= 45 -> 75
-                            settings.quality >= 35 -> 60
-                            settings.quality >= 25 -> 45
-                            settings.quality >= 15 -> 30
-                            settings.quality >= 10 -> 20
-                            else -> 10
+                            settings.quality >= 45 -> 90
+                            settings.quality >= 35 -> 80
+                            settings.quality >= 25 -> 70
+                            settings.quality >= 15 -> 55
+                            settings.quality >= 10 -> 40
+                            else -> 30
                         }
 
                         val result = NativeEncoderSimple.encodeWebPFromFiles(
@@ -428,10 +428,10 @@ class Recorder {
 					settings.fps.coerceIn(1, 60)
 				}
 				val gifCap = when {
-					settings.fastGifPreview -> 10
-					settings.quality < 20 -> 10
-					settings.quality <= 40 -> 12
-					else -> 15
+					settings.fastGifPreview -> 12
+					settings.quality < 20 -> 12
+					settings.quality <= 40 -> 16
+					else -> 20
 				}
 				val actualFps = minOf(rawFps, gifCap)
 				Log.d("Recorder", "GIF encoding: frames=${frameFiles.size}, duration=${actualDurationMs}ms, rawFps=$rawFps, gifCap=$gifCap, actualFps=$actualFps")

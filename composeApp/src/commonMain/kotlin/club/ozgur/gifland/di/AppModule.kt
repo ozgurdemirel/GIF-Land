@@ -38,7 +38,7 @@ val appModule = module {
     factory { SettingsViewModel(get(), get()) }
 
     // Quick panel view model for the lightweight interface
-    single { QuickPanelViewModel(get(), get()) }
+    single { QuickPanelViewModel(get(), get(), get()) }
 
     // ===== Services =====
 

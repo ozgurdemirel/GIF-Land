@@ -19,7 +19,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import club.ozgur.gifland.LocalRecorder
-import kotlinx.coroutines.GlobalScope
+import club.ozgur.gifland.core.ApplicationScope
 import kotlinx.coroutines.launch
 import club.ozgur.gifland.util.Log
 import androidx.compose.ui.window.DialogProperties
@@ -202,13 +202,19 @@ object RecordingScreen : Screen {
                                 }
                             }
 
-                            // İlerleme göstergesi
+                            // İlerleme göstergesi (daha akıcı animasyon ve tema renk uyumu)
+                            val targetProgress = (recordingState.duration / recorder.settings.maxDuration.toFloat()).coerceIn(0f, 1f)
+                            val animatedProgress by animateFloatAsState(
+                                targetValue = targetProgress,
+                                animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+                                label = "record-progress"
+                            )
                             CircularProgressIndicator(
-                                progress = { recordingState.duration / recorder.settings.maxDuration.toFloat() },
+                                progress = { animatedProgress },
                                 modifier = Modifier.size(40.dp),
-                                color = Color.White,
-                                strokeWidth = 3.dp,
-                                trackColor = Color.White.copy(0.3f)
+                                color = MaterialTheme.colorScheme.error,
+                                strokeWidth = 4.dp,
+                                trackColor = MaterialTheme.colorScheme.outlineVariant
                             )
                         }
                     }
@@ -362,9 +368,9 @@ object RecordingScreen : Screen {
                             // Hemen ana ekrana dön
                             navigator.pop()
 
-                            // Arka planda kaydetme işlemini başlat - GlobalScope kullan çünkü
-                            // navigator.pop() sonrası RecordingScreen scope iptal oluyor
-                            GlobalScope.launch {
+                            // Arka planda kaydetme işlemini başlat - ApplicationScope kullan
+                            // navigator.pop() sonrası bu ekranın scope'u iptal olur
+                            ApplicationScope.launch {
                                 val result = recorder.stopRecording()
                                 result.onSuccess { file ->
                                     // Don't reset here - let MainScreen handle it

@@ -28,20 +28,10 @@ val platformModule = module {
 
     // Recording service - uses shared Recorder and repositories
     single { RecordingService(get(), get(), get()) }
+    // Bind the same singleton instance to the RecordingController interface
+    single<club.ozgur.gifland.domain.service.RecordingController> { get<RecordingService>() }
 
-    // Media repository with platform-specific file operations
-    single<MediaRepository> {
-        val platformRepo = runBlocking {
-            PlatformMediaRepository.create()
-        }
-        // Return the base repository that PlatformMediaRepository delegates to
-        MediaRepository()
-    }
 
-    // Also provide the platform repository for JVM-specific operations
-    single {
-        runBlocking {
-            PlatformMediaRepository.create()
-        }
-    }
+    // Provide a single PlatformMediaRepository that wraps the shared base MediaRepository
+    single { PlatformMediaRepository(get()) }
 }

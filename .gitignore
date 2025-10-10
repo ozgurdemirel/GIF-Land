@@ -48,3 +48,9 @@ ffmpeg-build/
 *.log
 *.swp
 *~
+
+########################################
+# Local documentation/notes
+########################################
+kmp_by_tutorials.md
+desktop_by_tut.md
